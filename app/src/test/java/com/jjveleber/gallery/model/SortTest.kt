@@ -53,6 +53,11 @@ class SortTest {
         )
     }
 
+    @Test fun pathOrdersSegmentsNaturallyNotByRawCharacters() {
+        val items = listOf(item("a-b/1.jpg"), item("a/sub/1.jpg"), item("a/1.jpg"))
+        assertEquals(listOf("a/1.jpg", "a/sub/1.jpg", "a-b/1.jpg"), names(sortItems(items, SortSpec(SortOrder.Path))))
+    }
+
     @Test fun modifiedSortsByTimeThenName() {
         val items = listOf(item("c.jpg", modifiedMs = 5), item("b.jpg", modifiedMs = 1), item("a.jpg", modifiedMs = 5))
         assertEquals(listOf("b.jpg", "a.jpg", "c.jpg"), names(sortItems(items, SortSpec(SortOrder.Modified))))

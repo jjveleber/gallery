@@ -47,8 +47,19 @@ object NaturalOrder : Comparator<String> {
 private val byName: Comparator<ImageItem> =
     compareBy<ImageItem, String>(NaturalOrder) { it.name }.thenBy(NaturalOrder) { it.relPath }
 
+// Folder segments compare one at a time, so a sibling like "a-b" cannot land between "a" and "a/sub".
+private val bySegments = Comparator<List<String>> { x, y ->
+    for (k in 0 until minOf(x.size, y.size)) {
+        val c = NaturalOrder.compare(x[k], y[k])
+        if (c != 0) return@Comparator c
+    }
+    x.size - y.size
+}
+
 private val byPath: Comparator<ImageItem> =
-    compareBy<ImageItem, String>(NaturalOrder) { it.relPath.substringBeforeLast('/', "") }.thenBy(NaturalOrder) { it.name }
+    compareBy<ImageItem, List<String>>(bySegments) {
+        it.relPath.substringBeforeLast('/', "").let { dir -> if (dir.isEmpty()) emptyList() else dir.split('/') }
+    }.thenBy(NaturalOrder) { it.name }
 
 fun sortItems(items: List<ImageItem>, spec: SortSpec): List<ImageItem> {
     val comparator = when (spec.order) {
