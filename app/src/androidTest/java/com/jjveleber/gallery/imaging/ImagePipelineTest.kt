@@ -66,6 +66,13 @@ class ImagePipelineTest {
         }
     }
 
+    // APNG4Android tolerates a header-only APNG (acTL but no frames), so this cannot reach decodeStill;
+    // it only pins that such a file ends in a clean result instead of a crash or hang.
+    @Test fun headerOnlyAnimatedFileEndsCleanly() {
+        val result = load(copyAsset("truncated.png"), animate = true)
+        assertTrue("unexpected $result", result is SuccessResult || result is ErrorResult)
+    }
+
     @Test fun animatedFilesDecodeAsStillWhenNotAllowed() {
         for (name in listOf("anim.gif", "anim.png", "anim.webp")) {
             val image = success(load(copyAsset(name), animate = false)).image

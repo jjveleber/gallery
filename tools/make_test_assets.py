@@ -43,6 +43,20 @@ def build_anim_webp(frames, path):
         subprocess.run(args, check=True)
 
 
+def truncate_after_actl(src, dst):
+    """APNG cut right after its acTL chunk: the sniffer sees an animated header but there is no frame data."""
+    data = open(src, "rb").read()
+    pos = 8
+    while pos < len(data):
+        length = int.from_bytes(data[pos:pos + 4], "big")
+        kind = data[pos + 4:pos + 8]
+        pos += 12 + length
+        if kind == b"acTL":
+            break
+    with open(dst, "wb") as f:
+        f.write(data[:pos])
+
+
 def build(out):
     frames = [frame(i) for i in range(4)]
     frames[0].save(os.path.join(out, "anim.gif"), save_all=True, append_images=frames[1:],
@@ -55,6 +69,7 @@ def build(out):
     frames[0].convert("RGB").save(os.path.join(out, "still.jpg"), quality=90)
     frames[0].convert("RGB").save(os.path.join(out, "still.bmp"))
     build_anim_webp(frames, os.path.join(out, "anim.webp"))
+    truncate_after_actl(os.path.join(out, "anim.png"), os.path.join(out, "truncated.png"))
     exif = Image.Exif()
     exif[0x0112] = 6  # Orientation: rotate 90 degrees clockwise to display.
     Image.new("RGB", (40, 20), (0, 128, 255)).save(os.path.join(out, "rotated.jpg"), exif=exif)

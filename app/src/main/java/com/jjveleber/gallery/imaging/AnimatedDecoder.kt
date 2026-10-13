@@ -41,8 +41,16 @@ class AnimatedDecoder(
             ImageKind.Static -> error("Static images are not routed to AnimatedDecoder")
         }
         // intrinsicWidth parses the header on APNG4Android's worker thread; 0 means it could not read the file.
-        val width = drawable.intrinsicWidth
-        val height = drawable.intrinsicHeight
+        var width = drawable.intrinsicWidth
+        var height = drawable.intrinsicHeight
+        if (width <= 0 || height <= 0) {
+            // getBounds() parks once for the header parse, so a spurious wakeup can return an empty rect while the
+            // parse is still queued. After a real failure fullRect is already set and this returns at once; after a
+            // spurious wakeup the serial worker handler makes this call wait for the pending parse.
+            val bounds = drawable.frameSeqDecoder.bounds
+            width = bounds.width()
+            height = bounds.height()
+        }
         return if (width > 0 && height > 0) {
             applyRequestSize(drawable, width, height)
             DecodeResult(drawable.asImage(shareable = false), isSampled = false)
