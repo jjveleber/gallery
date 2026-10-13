@@ -15,13 +15,23 @@ Build: GitHub pre-release `device-check-1`, installed on the Fire Max 11.
 
 ## Open with URI from the Fire Files app
 
-The Fire's Files app is ES File Explorer.
+Two different apps can send Open with on the Fire, and they use different URI forms.
+
+Fire built-in Files app:
+
+- sends a document URI: isDocumentUri `true`
+- documentId looks like `primary:folder/xyz.gif` (`<volume>:<relative path>`)
+- no `_data` column
+- the authority was not captured and may not be `com.android.externalstorage.documents`
+
+The resolver handles this through `locationFromDocumentId`, which accepts any document authority whose ID has the `<volume>:<relative path>` shape.
+
+ES File Explorer (a separate app):
 
 - scheme: `content`
 - authority: `com.estrongs.files`
 - isDocumentUri: `false`
 - documentId: none
+- the query returns a `_data` column holding the absolute file path (e.g. `/storage/emulated/0/Pictures/<name>.jpg`)
 
-The query returns a `_data` column containing the absolute file path (e.g. `/storage/emulated/0/Pictures/<name>.jpg`). The full `uri=` line was not captured.
-
-This is a provider exposing a `_data` path, which the resolver handles via `locationFromPath`.
+The resolver handles this through the `_data` column and `locationFromPath`.
