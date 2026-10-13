@@ -1,0 +1,70 @@
+package com.jjveleber.gallery.settings
+
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.MutablePreferences
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.jjveleber.gallery.model.INTERVALS_SEC
+import com.jjveleber.gallery.model.Settings
+import com.jjveleber.gallery.model.SortSpec
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+
+interface SettingsStore {
+    val settings: Flow<Settings>
+    suspend fun update(transform: (Settings) -> Settings)
+}
+
+class DataStoreSettingsStore(private val store: DataStore<Preferences>) : SettingsStore {
+    override val settings: Flow<Settings> = store.data.map { it.toSettings() }
+
+    override suspend fun update(transform: (Settings) -> Settings) {
+        store.edit { prefs -> transform(prefs.toSettings()).writeTo(prefs) }
+    }
+}
+
+private val SORT_ORDER = stringPreferencesKey("sort_order")
+private val SORT_ASCENDING = booleanPreferencesKey("sort_ascending")
+private val RANDOM_SEED = longPreferencesKey("random_seed")
+private val GRID_SIZE = stringPreferencesKey("grid_size")
+private val ANIMATE_GRID = booleanPreferencesKey("animate_grid")
+private val ANIMATE_FULL_SCREEN = booleanPreferencesKey("animate_full_screen")
+private val AUTO_ADVANCE = booleanPreferencesKey("auto_advance")
+private val INTERVAL_SEC = intPreferencesKey("interval_sec")
+private val TRANSITION = stringPreferencesKey("transition")
+
+fun Preferences.toSettings(): Settings {
+    val d = Settings()
+    return Settings(
+        sort = SortSpec(
+            order = enumOr(this[SORT_ORDER], d.sort.order),
+            ascending = this[SORT_ASCENDING] ?: d.sort.ascending,
+            randomSeed = this[RANDOM_SEED] ?: d.sort.randomSeed,
+        ),
+        gridSize = enumOr(this[GRID_SIZE], d.gridSize),
+        animateGrid = this[ANIMATE_GRID] ?: d.animateGrid,
+        animateFullScreen = this[ANIMATE_FULL_SCREEN] ?: d.animateFullScreen,
+        autoAdvance = this[AUTO_ADVANCE] ?: d.autoAdvance,
+        intervalSec = this[INTERVAL_SEC]?.takeIf { it in INTERVALS_SEC } ?: d.intervalSec,
+        transition = enumOr(this[TRANSITION], d.transition),
+    )
+}
+
+private fun Settings.writeTo(prefs: MutablePreferences) {
+    prefs[SORT_ORDER] = sort.order.name
+    prefs[SORT_ASCENDING] = sort.ascending
+    prefs[RANDOM_SEED] = sort.randomSeed
+    prefs[GRID_SIZE] = gridSize.name
+    prefs[ANIMATE_GRID] = animateGrid
+    prefs[ANIMATE_FULL_SCREEN] = animateFullScreen
+    prefs[AUTO_ADVANCE] = autoAdvance
+    prefs[INTERVAL_SEC] = intervalSec
+    prefs[TRANSITION] = transition.name
+}
+
+private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
+    enumValues<E>().firstOrNull { it.name == name } ?: default
