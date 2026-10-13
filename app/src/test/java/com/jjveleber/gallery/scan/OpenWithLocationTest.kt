@@ -54,6 +54,16 @@ class OpenWithLocationTest {
         locationFromPath("/sdcard/DCIM/Camera/a.jpg"),
     )
 
+    @Test fun selfPrimaryPath() = assertEquals(
+        FolderLocation("external_primary", "Pictures/", "a.jpg"),
+        locationFromPath("/storage/self/primary/Pictures/a.jpg"),
+    )
+
+    @Test fun esFileExplorerUriPath() = assertEquals(
+        FolderLocation("external_primary", "folder/", "xyz.gif"),
+        locationFromPath("/storage/emulated/0/folder/xyz.gif"),
+    )
+
     @Test fun sdCardPath() = assertEquals(
         FolderLocation("1a2b-3c4d", "DCIM/", "a.jpg"),
         locationFromPath("/storage/1A2B-3C4D/DCIM/a.jpg"),

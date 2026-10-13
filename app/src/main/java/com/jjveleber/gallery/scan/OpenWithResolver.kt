@@ -50,7 +50,7 @@ class AndroidOpenWithResolver(private val context: Context) : OpenWithResolver {
             }
         }
         val fileName = name ?: uri.lastPathSegment?.substringAfterLast('/') ?: "image"
-        return ImageItem(uri.toString(), fileName, fileName, size, 0, resolver.getType(uri).orEmpty())
+        return ImageItem(uri.toString(), fileName, fileName, size, 0, runCatching { resolver.getType(uri) }.getOrNull().orEmpty())
     }
 
     private fun locate(uri: Uri): FolderLocation? = runCatching {
@@ -61,7 +61,13 @@ class AndroidOpenWithResolver(private val context: Context) : OpenWithResolver {
                 locationFromDocumentId(uri.authority.orEmpty(), DocumentsContract.getDocumentId(uri))
             else -> null
         }
-    }.getOrNull() ?: runCatching { dataColumnLocation(uri) }.getOrNull()
+    }.getOrNull()
+        ?: runCatching { dataColumnLocation(uri) }.getOrNull()
+        ?: pathLocation(uri)
+
+    /** Last resort: some file managers (ES File Explorer) put the absolute path in the content URI path. */
+    private fun pathLocation(uri: Uri): FolderLocation? =
+        if (uri.scheme == "content") uri.path?.let(::locationFromPath) else null
 
     private fun mediaStoreLocation(uri: Uri): FolderLocation? {
         val columns = arrayOf(MediaStore.MediaColumns.VOLUME_NAME, MediaStore.MediaColumns.RELATIVE_PATH, MediaStore.MediaColumns.DISPLAY_NAME)

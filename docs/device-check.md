@@ -32,6 +32,7 @@ ES File Explorer (a separate app):
 - authority: `com.estrongs.files`
 - isDocumentUri: `false`
 - documentId: none
+- full form: `content://com.estrongs.files/storage/emulated/0/folder/xyz.gif` (the URI path is the absolute file path)
 - the query returns a `_data` column holding the absolute file path (e.g. `/storage/emulated/0/Pictures/<name>.jpg`)
 
-The resolver handles this through the `_data` column and `locationFromPath`.
+The resolver handles this through the `_data` column and `locationFromPath`, falling back to `locationFromPath` on the URI path when `_data` is absent or unmappable.

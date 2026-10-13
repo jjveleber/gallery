@@ -13,6 +13,7 @@ private val VOLUME_ID = Regex("primary|[0-9A-F]{4}-[0-9A-F]{4}")
 
 fun locationFromPath(path: String): FolderLocation? = when {
     path.startsWith("/storage/emulated/0/") -> split(PRIMARY, path.removePrefix("/storage/emulated/0/"))
+    path.startsWith("/storage/self/primary/") -> split(PRIMARY, path.removePrefix("/storage/self/primary/"))
     path.startsWith("/sdcard/") -> split(PRIMARY, path.removePrefix("/sdcard/"))
     path.startsWith("/storage/") -> {
         val afterStorage = path.removePrefix("/storage/")
