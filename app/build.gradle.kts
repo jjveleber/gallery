@@ -60,6 +60,8 @@ dependencies {
     implementation("com.github.penfeizhou.android.animation:apng:$apng4android")
     implementation("com.github.penfeizhou.android.animation:awebp:$apng4android")
     implementation("com.github.penfeizhou.android.animation:gif:$apng4android")
+    // Animatable2Compat is a supertype of APNG4Android drawables but only on its runtime classpath.
+    implementation("androidx.vectordrawable:vectordrawable-animated:1.1.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
