@@ -53,9 +53,11 @@ Optional: once installed, you can go back to **Apps from Unknown Sources** and t
 
 - **Crash report:** if Gallery crashes, the next launch shows the report in a dialog. Tap **Copy** to put it on the clipboard so you can send it to the developer, or **Dismiss** to delete it. Closing the dialog with Back or by tapping outside it keeps the report, so it shows again next launch; only **Dismiss** deletes it. After a crash the app opens at the folder list instead of the last folder, so a folder that crashed cannot crash it again; tap the folder in the list to open it. If the system kills Gallery for low memory, no report is saved.
 
+For a full walkthrough with screenshots, see the [usage guide](docs/usage.md).
+
 Your sort order and grid size (top bar), the options in the Settings sheet (animation switches, interval, transition) and the last folder you opened from the folder list are all saved between launches.
 
-Known limitation: with **Animate thumbnails** on, a grid with many large animated GIFs can use a lot of memory.
+Known limitation: with **Animate thumbnails** on, animating many GIFs of up to 1 megapixel each in the grid can still use a lot of memory.
 
 ## Updating to a newer version
 
