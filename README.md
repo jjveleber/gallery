@@ -44,16 +44,16 @@ Optional: once installed, you can go back to **Apps from Unknown Sources** and t
 ## Using it
 
 - **Pick folder:** tap **Pick folder**, choose a folder in the system picker and confirm with its **Use this folder** button. The app remembers nothing between launches, so it always starts here. To switch folders later, tap **Folder** in the grid top bar.
-- **Grid:** pinch to change the thumbnail size, or use the **Size** icon. The **Sort** icon offers name, date modified, folder path, file size and random (with **Reshuffle**), ascending or descending. Animated images show an **ANIM** badge unless **Animate thumbnails** is on in Settings (the gear icon).
+- **Grid:** pinch to change the thumbnail size, or use the **+** icon (Size) in the top bar. The **Sort** icon in the top bar offers name, date modified, folder path, file size and random (with **Reshuffle**), ascending or descending. Animated images show an **ANIM** badge unless **Animate thumbnails** is on in Settings (the gear icon).
 - **Full screen:** tap a thumbnail. Swipe, or tap the left or right edge, to move between images; it wraps around at the ends. Pinch or double-tap to zoom. Tap the middle to show the controls: **Play**/**Pause** auto advance, the interval (tap to change), and Settings.
 - **Play** (the play icon in the grid top bar) starts a slideshow from the first image.
-- **Open with:** works from the Fire **Files** app and from ES File Explorer. Long-press an image, choose **Open with**, then **Gallery**. Allow photo access to swipe through the other images in the same folder. If you deny it, tap **Browse this folder** and pick the folder once.
+- **Open with:** works from the Fire **Files** app and from ES File Explorer. Long-press an image, choose **Open with**, then **Gallery**. Allow photo access to swipe through the other images in the same folder. If you deny it, or the app cannot work out or list the folder, a **Browse this folder** button appears: tap it and pick the folder once.
 
-Settings (sort, size, auto advance, interval, transition, and the two animation switches) are saved between launches.
+Your sort order and grid size (top bar) and the options in the Settings sheet (animation switches, auto advance, interval, transition) are all saved between launches.
 
 ## Updating to a newer version
 
-Download or copy the newer APK and install it over the top, the same way as the first install (Route A steps 2 to 6, or Route B step 4). Do not uninstall first. Your settings are kept.
+Download or copy the newer APK and install it over the top, the same way as the first install (Route A steps 2 to 6, or Route B step 4). Do not uninstall first. Your settings are kept. Both routes install the same build, so you can update over the top by either route.
 
 ## Uninstalling
 
