@@ -1,5 +1,9 @@
 package com.jjveleber.gallery.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,13 +18,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import com.jjveleber.gallery.imaging.AnimatedRegistry
+import com.jjveleber.gallery.scan.EXTERNAL_STORAGE_AUTHORITY
+import com.jjveleber.gallery.scan.externalStorageDocId
 import com.jjveleber.gallery.ui.grid.GridScreen
 import com.jjveleber.gallery.ui.picker.PickerScreen
 import com.jjveleber.gallery.ui.viewer.ViewerScreen
 
 @Composable
-fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, onFinish: () -> Unit) {
+fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: String?, onFinish: () -> Unit) {
     val screen by vm.screen.collectAsState()
     val message by vm.message.collectAsState()
     val context = LocalContext.current
@@ -33,6 +40,24 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, onFinish: () -
     val pickTree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) vm.pickFolder(uri.toString())
     }
+    val browseTree = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) vm.browseOpenWithFolder(uri.toString())
+    }
+
+    if (openWithUri != null) {
+        val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+        val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            vm.openWith(openWithUri, mayReadMedia = granted)
+        }
+        LaunchedEffect(openWithUri) {
+            if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
+                vm.openWith(openWithUri, mayReadMedia = true)
+            } else {
+                requestPermission.launch(permission)
+            }
+        }
+    }
+
     when (val s = screen) {
         Screen.Picker, is Screen.Scanning -> {
             if (s is Screen.Scanning) BackHandler(onBack = vm::cancelScan)
@@ -43,6 +68,13 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, onFinish: () -
             BackHandler(onBack = vm::changeFolder)
             GridScreen(vm, registry)
         }
-        is Screen.Viewer -> ViewerScreen(vm, s.startIndex, onBrowseFolder = {}, onExit = onFinish)
+        is Screen.Viewer -> ViewerScreen(
+            vm,
+            s.startIndex,
+            onBrowseFolder = { hint ->
+                browseTree.launch(hint?.let { DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_AUTHORITY, it.externalStorageDocId()) })
+            },
+            onExit = onFinish,
+        )
     }
 }

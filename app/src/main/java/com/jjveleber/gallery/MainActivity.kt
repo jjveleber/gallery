@@ -1,5 +1,6 @@
 package com.jjveleber.gallery
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -18,6 +19,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val container = (application as GalleryApp).container
+        // Only on first creation: after a recreation the ViewModel already holds the result.
+        val openWithUri = intent.takeIf { savedInstanceState == null && it.action == Intent.ACTION_VIEW }?.data?.toString()
         setContent {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
@@ -26,7 +29,7 @@ class MainActivity : ComponentActivity() {
                             initializer { GalleryViewModel(container.scanner, container.openWith, container.settings) }
                         },
                     )
-                    GalleryRoot(vm, container.animated, onFinish = ::finish)
+                    GalleryRoot(vm, container.animated, openWithUri, onFinish = ::finish)
                 }
             }
         }
