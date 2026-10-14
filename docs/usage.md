@@ -54,6 +54,8 @@ Animated images (GIF, WebP and APNG) show an **ANIM** badge and a still picture 
 
 If you want the thumbnails to move, turn on **Animate thumbnails** in Settings (see below). GIFs larger than about 1 megapixel always stay a still with the **ANIM** badge in the grid, even with **Animate thumbnails** on, so a big GIF cannot slow the grid down. They still animate full screen.
 
+Some GIFs and animated WebPs are made with frame delays of 10 ms or less. Web browsers play those frames for 100 ms each, and so does Gallery, so they run at the speed you see in a browser instead of racing.
+
 ## Full screen
 
 ![Full screen viewer with the controls shown: the file name and position at the top left, Play, the interval and Settings at the top right](images/viewer.png)
@@ -100,7 +102,7 @@ The first search in a large library reads the files that might match, which can 
 
 What happens next depends on where the image came from:
 
-- **Folders from the folder list:** Android asks you to confirm moving the images to the trash. Trashed images disappear from every gallery app and Android erases them after about 30 days. Until then the file is still on the tablet, renamed to start with `.trashed-`, in its folder; a file manager that shows hidden files can rename it back.
+- **Folders from the folder list:** Android asks you to confirm moving the images to the trash. There is no limit on how many you select; Android confirms them 500 at a time, so a big selection shows the dialog once per 500. If you cancel one, the ones already confirmed stay in the trash. Trashed images disappear from every gallery app and Android erases them after about 30 days. Until then the file is still on the tablet, renamed to start with `.trashed-`, in its folder; a file manager that shows hidden files can rename it back.
 - **Folders picked with Browse other folder:** Gallery asks you to confirm, then deletes the files for good. This can't be undone.
 - **Open with:** when you can swipe through the image's folder, deleting works as for the folder list. A single image on its own (Gallery could not list its folder) has no trash icon.
 
