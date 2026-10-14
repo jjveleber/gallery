@@ -51,6 +51,8 @@ Optional: once installed, you can go back to **Apps from Unknown Sources** and t
 - **Play** (the play icon in the grid top bar) starts a slideshow from the first image.
 - **Open with:** works from the Fire **Files** app and from ES File Explorer. Long-press an image, choose **Open with**, then **Gallery**. With photo access allowed you can swipe through the other images in the same folder. If you deny it, or the app cannot work out or list the folder, a **Browse this folder** button appears: tap it and pick the folder once.
 
+- **Crash report:** if Gallery crashes, the next launch shows the report in a dialog. Tap **Copy** to put it on the clipboard so you can send it to the developer, or **Dismiss** to delete it. Closing the dialog with Back keeps the report, so it shows again next launch.
+
 Your sort order and grid size (top bar), the options in the Settings sheet (animation switches, interval, transition) and the last folder you opened from the folder list are all saved between launches.
 
 Known limitation: with **Animate thumbnails** on, a grid with many large animated GIFs can use a lot of memory.

@@ -8,10 +8,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.jjveleber.gallery.ui.CrashReportDialog
 import com.jjveleber.gallery.ui.GalleryRoot
 import com.jjveleber.gallery.ui.GalleryViewModel
 
@@ -30,6 +35,19 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                     GalleryRoot(vm, container.animated, openWithUri, onFinish = ::finish)
+                    // The 64 KB cap keeps this read cheap enough for the main thread. Saved, so closing it
+                    // survives rotation.
+                    var crashReport by rememberSaveable { mutableStateOf(container.crashLog.read()) }
+                    crashReport?.let { report ->
+                        CrashReportDialog(
+                            report,
+                            onClose = { crashReport = null },
+                            onDismiss = {
+                                container.crashLog.clear()
+                                crashReport = null
+                            },
+                        )
+                    }
                 }
             }
         }
