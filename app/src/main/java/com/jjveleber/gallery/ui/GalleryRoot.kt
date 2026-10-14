@@ -7,7 +7,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -18,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.jjveleber.gallery.imaging.AnimatedRegistry
 import com.jjveleber.gallery.ui.grid.GridScreen
 import com.jjveleber.gallery.ui.picker.PickerScreen
+import com.jjveleber.gallery.ui.viewer.ViewerScreen
 
 @Composable
 fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, onFinish: () -> Unit) {
@@ -43,10 +43,6 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, onFinish: () -
             BackHandler(onBack = vm::changeFolder)
             GridScreen(vm, registry)
         }
-        is Screen.Viewer -> {
-            // Replaced by ViewerScreen in Task 12.
-            BackHandler { if (vm.closeViewer()) onFinish() }
-            Text("Image ${s.startIndex + 1}")
-        }
+        is Screen.Viewer -> ViewerScreen(vm, s.startIndex, onBrowseFolder = {}, onExit = onFinish)
     }
 }
