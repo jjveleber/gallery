@@ -15,4 +15,11 @@ class MediaThumbnailsTest {
         assertFalse(isMediaStoreUri("content://com.android.externalstorage.documents/tree/primary%3APictures/document/primary%3APictures%2Fa.jpg"))
         assertFalse(isMediaStoreUri("file:///sdcard/a.jpg"))
     }
+
+    @Test fun cannotAnimateWhenTypeCannotOrKnownStatic() {
+        assertTrue(cannotAnimate("image/jpeg", knownStatic = false))
+        assertTrue(cannotAnimate("image/png", knownStatic = true))
+        assertFalse(cannotAnimate("image/png", knownStatic = false))
+        assertFalse(cannotAnimate("image/gif", knownStatic = false))
+    }
 }

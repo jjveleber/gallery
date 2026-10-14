@@ -26,6 +26,9 @@ private val ANIMATABLE_MIME = setOf("image/gif", "image/webp", "image/png", "ima
 /** Only GIF, WebP and PNG files can be animated, so only they are sniffed. */
 fun mightBeAnimated(mime: String): Boolean = mime in ANIMATABLE_MIME
 
+/** True when a file of [mime] is known not to animate: its type cannot, or the registry already sniffed it as static. */
+fun cannotAnimate(mime: String, knownStatic: Boolean): Boolean = !mightBeAnimated(mime) || knownStatic
+
 /** MediaStore item URIs can use the system thumbnail cache; document (system picker) URIs cannot. */
 fun isMediaStoreUri(uri: String): Boolean = uri.startsWith("content://media/")
 
@@ -53,7 +56,7 @@ class MediaThumbnailFetcher(
 
     /** Sniffs the header once per file and records the result in [registry]. */
     private fun isAnimated(uri: Uri): Boolean {
-        if (!mightBeAnimated(data.mime) || registry.isStatic(data.uri)) return false
+        if (cannotAnimate(data.mime, registry.isStatic(data.uri))) return false
         if (registry.isAnimated(data.uri)) return true
         val kind = resolver.openInputStream(uri)?.source()?.buffer()?.use { AnimationSniffer.sniff(it) } ?: ImageKind.Static
         registry.record(data.uri, kind != ImageKind.Static)

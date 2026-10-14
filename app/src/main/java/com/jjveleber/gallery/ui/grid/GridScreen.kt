@@ -58,13 +58,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
+import coil3.request.Disposable
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import com.jjveleber.gallery.imaging.AnimatedRegistry
+import com.jjveleber.gallery.imaging.cannotAnimate
 import com.jjveleber.gallery.imaging.gridRequest
 import com.jjveleber.gallery.imaging.isMediaStoreUri
-import com.jjveleber.gallery.imaging.mightBeAnimated
 import com.jjveleber.gallery.model.GridSize
 import com.jjveleber.gallery.model.ImageItem
 import com.jjveleber.gallery.model.SortOrder
@@ -153,21 +154,29 @@ private fun PrefetchAhead(state: LazyGridState, items: List<ImageItem>, animate:
         val loader = SingletonImageLoader.get(context)
         var previousFirst = -1
         var forward = true
-        var previous = IntRange.EMPTY
-        snapshotFlow {
-            val visible = state.layoutInfo.visibleItemsInfo
-            (visible.firstOrNull()?.index ?: 0) to (visible.lastOrNull()?.index ?: -1)
-        }.collect { (first, last) ->
-            if (previousFirst >= 0 && first != previousFirst) forward = first > previousFirst
-            previousFirst = first
-            val range = prefetchRange(first, last, items.size, forward)
-            // Nearest cells first; cells already requested for the previous position are skipped.
-            for (i in if (forward) range else range.reversed()) {
-                val item = items[i]
-                val safe = !animate || (isMediaStoreUri(item.uri) && (!mightBeAnimated(item.mime) || registry.isStatic(item.uri)))
-                if (safe && i !in previous) loader.enqueue(gridRequest(context, item, animate, sizePx))
+        // Requests still pending, by cell index. Ones outside the new range are cancelled, so a fast fling does not
+        // leave stale prefetches competing with the visible cells.
+        val pending = HashMap<Int, Disposable>()
+        try {
+            snapshotFlow {
+                val visible = state.layoutInfo.visibleItemsInfo
+                (visible.firstOrNull()?.index ?: 0) to (visible.lastOrNull()?.index ?: -1)
+            }.collect { (first, last) ->
+                if (previousFirst >= 0 && first != previousFirst) forward = first > previousFirst
+                previousFirst = first
+                val range = prefetchRange(first, last, items.size, forward)
+                pending.entries.removeAll { (i, request) ->
+                    (i !in range).also { if (it) request.dispose() }
+                }
+                // Nearest cells first.
+                for (i in if (forward) range else range.reversed()) {
+                    val item = items[i]
+                    val safe = !animate || (isMediaStoreUri(item.uri) && cannotAnimate(item.mime, registry.isStatic(item.uri)))
+                    if (safe && i !in pending) pending[i] = loader.enqueue(gridRequest(context, item, animate, sizePx))
+                }
             }
-            previous = range
+        } finally {
+            pending.values.forEach { it.dispose() }
         }
     }
 }
