@@ -4,7 +4,9 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.jjveleber.gallery.model.FolderRef
 import com.jjveleber.gallery.model.GridSize
+import com.jjveleber.gallery.model.PRIMARY_VOLUME
 import com.jjveleber.gallery.model.Settings
 import com.jjveleber.gallery.model.SortOrder
 import com.jjveleber.gallery.model.SortSpec
@@ -17,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -53,6 +56,7 @@ class SettingsStoreTest {
             autoAdvance = true,
             intervalSec = 120,
             transition = Transition.None,
+            lastFolder = FolderRef("1a2b-3c4d", "DCIM/Trip_1/"),
         )
         val store = store()
         store.update { custom }
@@ -77,5 +81,17 @@ class SettingsStoreTest {
 
     @Test fun intervalOutsideTheListFallsBackToDefault() {
         assertEquals(5, mutablePreferencesOf(intPreferencesKey("interval_sec") to 7).toSettings().intervalSec)
+    }
+
+    @Test fun clearingLastFolderRemovesIt() = runBlocking {
+        val store = store()
+        store.update { it.copy(lastFolder = FolderRef(PRIMARY_VOLUME, "Pictures/")) }
+        store.update { it.copy(lastFolder = null) }
+        assertNull(store.settings.first().lastFolder)
+    }
+
+    @Test fun lastFolderNeedsBothKeys() {
+        assertNull(mutablePreferencesOf(stringPreferencesKey("last_folder_volume") to PRIMARY_VOLUME).toSettings().lastFolder)
+        assertNull(mutablePreferencesOf(stringPreferencesKey("last_folder_path") to "Pictures/").toSettings().lastFolder)
     }
 }

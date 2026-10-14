@@ -15,4 +15,6 @@ data class Settings(
     val autoAdvance: Boolean = false,
     val intervalSec: Int = 5,
     val transition: Transition = Transition.Crossfade,
+    /** The last folder opened from the folder list, reopened on the next launch. */
+    val lastFolder: FolderRef? = null,
 )

@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.jjveleber.gallery.model.FolderRef
 import com.jjveleber.gallery.model.INTERVALS_SEC
 import com.jjveleber.gallery.model.Settings
 import com.jjveleber.gallery.model.SortSpec
@@ -53,6 +54,8 @@ private val ANIMATE_FULL_SCREEN = booleanPreferencesKey("animate_full_screen")
 private val AUTO_ADVANCE = booleanPreferencesKey("auto_advance")
 private val INTERVAL_SEC = intPreferencesKey("interval_sec")
 private val TRANSITION = stringPreferencesKey("transition")
+private val LAST_FOLDER_VOLUME = stringPreferencesKey("last_folder_volume")
+private val LAST_FOLDER_PATH = stringPreferencesKey("last_folder_path")
 
 fun Preferences.toSettings(): Settings {
     val d = Settings()
@@ -68,7 +71,14 @@ fun Preferences.toSettings(): Settings {
         autoAdvance = this[AUTO_ADVANCE] ?: d.autoAdvance,
         intervalSec = this[INTERVAL_SEC]?.takeIf { it in INTERVALS_SEC } ?: d.intervalSec,
         transition = enumOr(this[TRANSITION], d.transition),
+        lastFolder = lastFolder(),
     )
+}
+
+private fun Preferences.lastFolder(): FolderRef? {
+    val volume = this[LAST_FOLDER_VOLUME] ?: return null
+    val path = this[LAST_FOLDER_PATH] ?: return null
+    return FolderRef(volume, path)
 }
 
 private fun Settings.writeTo(prefs: MutablePreferences) {
@@ -81,6 +91,13 @@ private fun Settings.writeTo(prefs: MutablePreferences) {
     prefs[AUTO_ADVANCE] = autoAdvance
     prefs[INTERVAL_SEC] = intervalSec
     prefs[TRANSITION] = transition.name
+    if (lastFolder == null) {
+        prefs.remove(LAST_FOLDER_VOLUME)
+        prefs.remove(LAST_FOLDER_PATH)
+    } else {
+        prefs[LAST_FOLDER_VOLUME] = lastFolder.volume
+        prefs[LAST_FOLDER_PATH] = lastFolder.relativePath
+    }
 }
 
 private inline fun <reified E : Enum<E>> enumOr(name: String?, default: E): E =
