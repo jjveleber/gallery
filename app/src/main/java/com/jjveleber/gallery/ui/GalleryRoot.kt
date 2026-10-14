@@ -1,17 +1,22 @@
 package com.jjveleber.gallery.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.DocumentsContract
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -26,6 +31,8 @@ import androidx.core.content.ContextCompat
 import com.jjveleber.gallery.imaging.AnimatedRegistry
 import com.jjveleber.gallery.scan.EXTERNAL_STORAGE_AUTHORITY
 import com.jjveleber.gallery.scan.externalStorageDocId
+import com.jjveleber.gallery.storage.DeleteKind
+import com.jjveleber.gallery.storage.trashRequest
 import com.jjveleber.gallery.ui.folders.FolderListScreen
 import com.jjveleber.gallery.ui.grid.GridScreen
 import com.jjveleber.gallery.ui.picker.PickerScreen
@@ -81,6 +88,8 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
         }
     }
 
+    DeleteConfirmation(vm)
+
     val folderListState = rememberLazyListState()
     if (openWithPending) {
         Box(Modifier.fillMaxSize().background(Color.Black))
@@ -105,6 +114,41 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
                 browseTree.launch(hint?.let { DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_AUTHORITY, it.externalStorageDocId()) })
             },
             onExit = onFinish,
+        )
+    }
+}
+
+/**
+ * Confirms a pending delete: the system trash dialog for MediaStore images (Android requires it for media the app
+ * did not create), or the app's own dialog for picked-folder files, which are deleted for good.
+ */
+@Composable
+private fun DeleteConfirmation(vm: GalleryViewModel) {
+    val request by vm.deleteRequest.collectAsState()
+    val context = LocalContext.current
+    val trash = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (result.resultCode == Activity.RESULT_OK) vm.trashConfirmed() else vm.cancelDelete()
+    }
+    LaunchedEffect(request) {
+        val r = request ?: return@LaunchedEffect
+        if (r.kind != DeleteKind.Trash || r.launched) return@LaunchedEffect
+        try {
+            trash.launch(IntentSenderRequest.Builder(trashRequest(context.contentResolver, r.uris)).build())
+            vm.trashLaunched()
+        } catch (e: Exception) {
+            vm.cancelDelete()
+            Toast.makeText(context, "Can't delete: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    val r = request
+    if (r != null && r.kind == DeleteKind.Permanent) {
+        val what = if (r.uris.size == 1) "this image" else "these ${r.uris.size} images"
+        AlertDialog(
+            onDismissRequest = vm::cancelDelete,
+            title = { Text("Delete $what?") },
+            text = { Text("Files in a folder picked from the system picker are deleted for good. This can't be undone.") },
+            confirmButton = { TextButton(onClick = vm::confirmPermanentDelete) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = vm::cancelDelete) { Text("Cancel") } },
         )
     }
 }

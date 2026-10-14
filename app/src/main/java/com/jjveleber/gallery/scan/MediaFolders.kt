@@ -3,6 +3,7 @@ package com.jjveleber.gallery.scan
 import com.jjveleber.gallery.model.FolderRef
 import com.jjveleber.gallery.model.ImageItem
 import com.jjveleber.gallery.model.NaturalOrder
+import com.jjveleber.gallery.model.PRIMARY_VOLUME
 
 /** One MediaStore image row. [relativePath] is RELATIVE_PATH (ends with '/'). [modifiedMs] is in milliseconds. */
 data class MediaRow(
@@ -71,5 +72,15 @@ fun imagesIn(source: MediaRowSource, folder: FolderRef): List<ImageItem> =
         .filter { it.volume == folder.volume && it.relativePath.startsWith(folder.relativePath, ignoreCase = true) && it.isShown() }
         .map {
             val relPath = it.relativePath.substring(folder.relativePath.length) + it.name
+            ImageItem(source.uriOf(it), it.name, relPath, it.sizeBytes, it.modifiedMs, it.mime.orEmpty())
+        }
+
+/** Every supported, non-hidden image, with relPath the full path shown to the user (marked when on an SD card). */
+fun allImages(source: MediaRowSource): List<ImageItem> =
+    source.rows(volume = null, pathPrefix = "")
+        .filter { it.isShown() }
+        .map {
+            val path = it.relativePath + it.name
+            val relPath = if (it.volume == PRIMARY_VOLUME) path else "SD card: $path"
             ImageItem(source.uriOf(it), it.name, relPath, it.sizeBytes, it.modifiedMs, it.mime.orEmpty())
         }

@@ -1,5 +1,6 @@
 package com.jjveleber.gallery.testing
 
+import com.jjveleber.gallery.dupes.ImageHasher
 import com.jjveleber.gallery.model.FolderRef
 import com.jjveleber.gallery.model.ImageItem
 import com.jjveleber.gallery.model.Settings
@@ -9,6 +10,7 @@ import com.jjveleber.gallery.scan.MediaLibrary
 import com.jjveleber.gallery.scan.OpenWithResolver
 import com.jjveleber.gallery.scan.OpenWithResult
 import com.jjveleber.gallery.settings.SettingsStore
+import com.jjveleber.gallery.storage.DocumentDeleter
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,6 +54,42 @@ class FakeLibrary : MediaLibrary {
     override suspend fun images(folder: FolderRef): List<ImageItem> {
         failWith?.let { throw it }
         return result(folder).await()
+    }
+
+    /** Every image on the device, for the duplicate search. */
+    var all: List<ImageItem> = emptyList()
+
+    override suspend fun allImages(): List<ImageItem> = all
+}
+
+/** Hashes a file to its entry in [contents]; files without one are unreadable. */
+class FakeHasher : ImageHasher {
+    val contents = mutableMapOf<String, String>()
+    val hashed = mutableListOf<String>()
+    var saves = 0
+
+    /** When set, every hash waits for it, so a test can act while a search runs. */
+    var gate: CompletableDeferred<Unit>? = null
+
+    override suspend fun hash(item: ImageItem): String? {
+        hashed += item.uri
+        gate?.await()
+        return contents[item.uri]
+    }
+
+    override suspend fun save() {
+        saves++
+    }
+}
+
+/** Deletes every URI except those in [failing]. */
+class FakeDeleter : DocumentDeleter {
+    val failing = mutableSetOf<String>()
+    val calls = mutableListOf<List<String>>()
+
+    override suspend fun delete(uris: List<String>): List<String> {
+        calls += uris
+        return uris.filter { it !in failing }
     }
 }
 

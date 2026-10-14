@@ -13,6 +13,9 @@ import java.io.FileNotFoundException
 interface MediaLibrary {
     suspend fun folders(): List<MediaFolder>
     suspend fun images(folder: FolderRef): List<ImageItem>
+
+    /** Every supported image on every volume, for the duplicate search. */
+    suspend fun allImages(): List<ImageItem>
 }
 
 class AndroidMediaLibrary(resolver: ContentResolver) : MediaLibrary {
@@ -21,6 +24,8 @@ class AndroidMediaLibrary(resolver: ContentResolver) : MediaLibrary {
     override suspend fun folders(): List<MediaFolder> = withContext(Dispatchers.IO) { listFolders(source) }
 
     override suspend fun images(folder: FolderRef): List<ImageItem> = withContext(Dispatchers.IO) { imagesIn(source, folder) }
+
+    override suspend fun allImages(): List<ImageItem> = withContext(Dispatchers.IO) { allImages(source) }
 }
 
 /** One MediaStore query per call, instead of one document-provider query per subfolder. */

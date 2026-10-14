@@ -1,8 +1,11 @@
 package com.jjveleber.gallery.ui.grid
 
 import android.graphics.drawable.Animatable
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
@@ -19,10 +22,14 @@ import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
@@ -37,6 +44,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +72,7 @@ import coil3.request.Disposable
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import com.jjveleber.gallery.dupes.extraCopies
 import com.jjveleber.gallery.imaging.AnimatedRegistry
 import com.jjveleber.gallery.imaging.cannotAnimate
 import com.jjveleber.gallery.imaging.gridRequest
@@ -81,27 +90,64 @@ fun GridScreen(vm: GalleryViewModel, registry: AnimatedRegistry) {
     val items by vm.items.collectAsState()
     val settings by vm.settings.collectAsState()
     val folder by vm.folderName.collectAsState()
+    val duplicates by vm.duplicates.collectAsState()
+    val duplicateProgress by vm.duplicateProgress.collectAsState()
+    val duplicatesOnly by vm.duplicatesOnly.collectAsState()
     val gridState = rememberLazyGridState(initialFirstVisibleItemIndex = vm.lastViewedIndex.value)
     var showSettings by remember { mutableStateOf(false) }
     val currentSize by rememberUpdatedState(settings.gridSize)
+    // URIs picked for deletion. While any are, a tap toggles a cell instead of opening it; a long press starts it.
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    LaunchedEffect(items) {
+        val present = items.mapTo(HashSet()) { it.uri }
+        selected = selected.filterTo(HashSet()) { it in present }
+    }
+    BackHandler(enabled = selected.isNotEmpty()) { selected = emptySet() }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(folder, maxLines = 1)
-                        Text(if (items.size == 1) "1 image" else "%,d images".format(items.size), style = MaterialTheme.typography.bodySmall)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { vm.openViewer(0, play = true) }, enabled = items.isNotEmpty()) { Icon(Icons.Default.PlayArrow, contentDescription = "Play slideshow") }
-                    SortMenu(settings.sort, onChange = vm::setSort, onReshuffle = vm::reshuffle)
-                    SizeMenu(settings.gridSize) { size -> vm.updateSettings { it.copy(gridSize = size) } }
-                    IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
-                    TextButton(onClick = vm::changeFolder) { Text("Folder") }
-                },
-            )
+            if (selected.isNotEmpty()) {
+                TopAppBar(
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                    navigationIcon = {
+                        IconButton(onClick = { selected = emptySet() }) { Icon(Icons.Default.Close, contentDescription = "Cancel selection") }
+                    },
+                    title = { Text("${selected.size} selected") },
+                    actions = {
+                        if (duplicates.isNotEmpty()) {
+                            TextButton(onClick = { selected = extraCopies(items, duplicates) }) { Text("Select extra copies") }
+                        }
+                        TextButton(onClick = { selected = items.mapTo(HashSet()) { it.uri } }) { Text("Select all") }
+                        IconButton(onClick = { vm.requestDelete(selected) }) { Icon(Icons.Default.Delete, contentDescription = "Delete selected") }
+                    },
+                )
+            } else {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(folder, maxLines = 1)
+                            val count = if (items.size == 1) "1 image" else "%,d images".format(items.size)
+                            val progress = duplicateProgress?.let { (done, total) ->
+                                if (total == 0) " · finding duplicates" else " · finding duplicates $done/$total"
+                            }.orEmpty()
+                            Text(count + progress, style = MaterialTheme.typography.bodySmall)
+                        }
+                    },
+                    actions = {
+                        if (duplicates.isNotEmpty() || duplicatesOnly) {
+                            TextButton(onClick = { vm.setDuplicatesOnly(!duplicatesOnly) }) {
+                                if (duplicatesOnly) Icon(Icons.Default.Check, contentDescription = null)
+                                Text("Duplicates (${duplicates.size})")
+                            }
+                        }
+                        IconButton(onClick = { vm.openViewer(0, play = true) }, enabled = items.isNotEmpty()) { Icon(Icons.Default.PlayArrow, contentDescription = "Play slideshow") }
+                        SortMenu(settings.sort, onChange = vm::setSort, onReshuffle = vm::reshuffle)
+                        SizeMenu(settings.gridSize) { size -> vm.updateSettings { it.copy(gridSize = size) } }
+                        IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
+                        TextButton(onClick = vm::changeFolder) { Text("Folder") }
+                    },
+                )
+            }
         },
     ) { padding ->
         if (items.isEmpty()) {
@@ -110,8 +156,13 @@ fun GridScreen(vm: GalleryViewModel, registry: AnimatedRegistry) {
                 verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("No supported images in this folder")
-                Button(onClick = vm::changeFolder) { Text("Change folder") }
+                if (duplicatesOnly) {
+                    Text("No duplicates left")
+                    Button(onClick = { vm.setDuplicatesOnly(false) }) { Text("Show all images") }
+                } else {
+                    Text("No supported images in this folder")
+                    Button(onClick = vm::changeFolder) { Text("Change folder") }
+                }
             }
         } else {
             BoxWithConstraints(Modifier.padding(padding).fillMaxSize().background(Color(0xFF101010))) {
@@ -130,7 +181,22 @@ fun GridScreen(vm: GalleryViewModel, registry: AnimatedRegistry) {
                         .pinchSteps { zoom -> vm.updateSettings { it.copy(gridSize = currentSize.step(zoom)) } },
                 ) {
                     itemsIndexed(items, key = { _, item -> item.uri }) { index, item ->
-                        Thumbnail(item, settings.animateGrid, thumbPx, registry) { vm.openViewer(index, play = false) }
+                        val isSelected = item.uri in selected
+                        Thumbnail(
+                            item,
+                            settings.animateGrid,
+                            thumbPx,
+                            registry,
+                            duplicate = item.uri in duplicates,
+                            selected = isSelected,
+                            onLongClick = { selected = selected + item.uri },
+                        ) {
+                            when {
+                                selected.isEmpty() -> vm.openViewer(index, play = false)
+                                isSelected -> selected = selected - item.uri
+                                else -> selected = selected + item.uri
+                            }
+                        }
                     }
                 }
             }
@@ -201,8 +267,18 @@ private fun Modifier.pinchSteps(onZoom: (Float) -> Unit): Modifier = pointerInpu
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun Thumbnail(item: ImageItem, animate: Boolean, sizePx: Int, registry: AnimatedRegistry, onClick: () -> Unit) {
+private fun Thumbnail(
+    item: ImageItem,
+    animate: Boolean,
+    sizePx: Int,
+    registry: AnimatedRegistry,
+    duplicate: Boolean,
+    selected: Boolean,
+    onLongClick: () -> Unit,
+    onClick: () -> Unit,
+) {
     val context = LocalContext.current
     var failed by remember(item.uri, animate) { mutableStateOf(false) }
     var badge by remember(item.uri) { mutableStateOf(false) }
@@ -220,7 +296,12 @@ private fun Thumbnail(item: ImageItem, animate: Boolean, sizePx: Int, registry: 
         })
     }
     Box(
-        Modifier.aspectRatio(1f).padding(2.dp).background(Color(0xFF1C1C1C)).clickable(onClick = onClick),
+        Modifier
+            .aspectRatio(1f)
+            .padding(2.dp)
+            .background(Color(0xFF1C1C1C))
+            .then(if (selected) Modifier.border(3.dp, MaterialTheme.colorScheme.primary) else Modifier)
+            .combinedClickable(onLongClick = onLongClick, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         if (failed) {
@@ -234,6 +315,22 @@ private fun Thumbnail(item: ImageItem, animate: Boolean, sizePx: Int, registry: 
                 color = Color.White,
                 fontSize = 10.sp,
                 modifier = Modifier.align(Alignment.TopEnd).padding(4.dp).background(Color(0x99000000)).padding(horizontal = 4.dp),
+            )
+        }
+        if (duplicate) {
+            Text(
+                "DUP",
+                color = Color.Black,
+                fontSize = 10.sp,
+                modifier = Modifier.align(Alignment.TopStart).padding(4.dp).background(Color(0xFFFFC107)).padding(horizontal = 4.dp),
+            )
+        }
+        if (selected) {
+            Icon(
+                Icons.Default.CheckCircle,
+                contentDescription = "Selected",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp).background(Color.White, CircleShape),
             )
         }
     }

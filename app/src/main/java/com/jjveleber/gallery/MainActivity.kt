@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     val vm: GalleryViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { GalleryViewModel(container.scanner, container.library, container.openWith, container.settings) }
+                            initializer { GalleryViewModel(container.scanner, container.library, container.openWith, container.settings, container.hasher, container.deleter) }
                         },
                     )
                     // The 64 KB cap keeps this read cheap enough for the main thread. Saved, so closing it

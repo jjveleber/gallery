@@ -142,4 +142,18 @@ class MediaFoldersTest {
         val source = FakeRows(listOf(row("pictures/trip/a.jpg")))
         assertEquals(listOf("a.jpg"), imagesIn(source, FolderRef(PRIMARY_VOLUME, "Pictures/Trip/")).map { it.relPath })
     }
+
+    @Test fun allImagesHasFullPathsMarksSdCardAndSkipsHidden() {
+        val source = FakeRows(
+            listOf(
+                row("DCIM/Camera/a.jpg"),
+                row("Pictures/b.jpg", volume = "1a2b-3c4d"),
+                row("root.jpg"),
+                row(".hidden/c.jpg"),
+                row("DCIM/clip.mp4", mime = "video/mp4"),
+            ),
+        )
+        assertEquals(listOf("DCIM/Camera/a.jpg", "SD card: Pictures/b.jpg", "root.jpg"), allImages(source).map { it.relPath })
+        assertEquals(listOf(null to ""), source.calls)
+    }
 }
