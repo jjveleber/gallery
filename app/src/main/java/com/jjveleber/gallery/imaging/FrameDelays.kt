@@ -2,12 +2,14 @@ package com.jjveleber.gallery.imaging
 
 import okio.BufferedSource
 import java.io.IOException
+import java.nio.ByteBuffer
 
 /**
  * Browsers and most image viewers play a frame whose delay is 10 ms or less for 100 ms instead, and many GIFs and
  * animated WebPs were made with 0 or 10 ms delays that only look right that way. Android's GIF decoder and
  * APNG4Android's WebP decoder play such delays as written, so the animation runs far too fast. These functions find
- * those delays in a file and raise them in a copy of its bytes. APNG4Android already does this for APNG.
+ * those delays in a file and raise them in a copy of its bytes. APNG4Android already does this for APNG, and for
+ * WebP only plays 0 ms as 100 ms, so for WebP this matters for 1 to 10 ms.
  */
 object FrameDelays {
     /** A delay at or below this many milliseconds is played for [FIXED_MS] instead, as browsers do. */
@@ -41,7 +43,8 @@ object FrameDelays {
                         } else {
                             s.skip(size.toLong())
                         }
-                        s.skipSubBlocks()
+                        // A size of 0 was already the block terminator.
+                        if (size != 0) s.skipSubBlocks()
                     }
                     0x2C -> { // image descriptor
                         s.skip(8)
@@ -87,21 +90,26 @@ object FrameDelays {
         }
     }
 
-    /** Sets the GIF delays at [offsets] (from [shortGifDelays]) to [FIXED_MS]. */
-    fun fixGif(bytes: ByteArray, offsets: List<Long>) {
+    /**
+     * Sets the GIF delays at [offsets] (from [shortGifDelays]) in [bytes] to [FIXED_MS]. Offsets past the buffer's
+     * limit are skipped, in case the file shrank since it was scanned.
+     */
+    fun fixGif(bytes: ByteBuffer, offsets: List<Long>) {
         val cs = FIXED_MS / 10
         for (o in offsets) {
-            bytes[o.toInt()] = cs.toByte()
-            bytes[o.toInt() + 1] = (cs shr 8).toByte()
+            if (o + 2 > bytes.limit()) continue
+            bytes.put(o.toInt(), cs.toByte())
+            bytes.put(o.toInt() + 1, (cs shr 8).toByte())
         }
     }
 
-    /** Sets the WebP frame durations at [offsets] (from [shortWebpDurations]) to [FIXED_MS]. */
-    fun fixWebp(bytes: ByteArray, offsets: List<Long>) {
+    /** Sets the WebP frame durations at [offsets] (from [shortWebpDurations]) in [bytes] to [FIXED_MS], like [fixGif]. */
+    fun fixWebp(bytes: ByteBuffer, offsets: List<Long>) {
         for (o in offsets) {
-            bytes[o.toInt()] = FIXED_MS.toByte()
-            bytes[o.toInt() + 1] = (FIXED_MS shr 8).toByte()
-            bytes[o.toInt() + 2] = (FIXED_MS shr 16).toByte()
+            if (o + 3 > bytes.limit()) continue
+            bytes.put(o.toInt(), FIXED_MS.toByte())
+            bytes.put(o.toInt() + 1, (FIXED_MS shr 8).toByte())
+            bytes.put(o.toInt() + 2, (FIXED_MS shr 16).toByte())
         }
     }
 

@@ -1,6 +1,7 @@
 package com.jjveleber.gallery.imaging
 
 import okio.Buffer
+import java.nio.ByteBuffer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -43,7 +44,7 @@ class FrameDelaysTest {
         val bytes = gif(0, 1, 2, 10)
         val offsets = gifDelays(bytes)
         assertEquals(2, offsets.size)
-        FrameDelays.fixGif(bytes, offsets)
+        FrameDelays.fixGif(ByteBuffer.wrap(bytes), offsets)
         assertTrue(gifDelays(bytes).isEmpty())
         assertArrayEquals(gif(10, 10, 2, 10), bytes)
     }
@@ -77,7 +78,7 @@ class FrameDelaysTest {
         val bytes = webp(0, 10, 11, 100)
         val offsets = webpDurations(bytes)
         assertEquals(2, offsets.size)
-        FrameDelays.fixWebp(bytes, offsets)
+        FrameDelays.fixWebp(ByteBuffer.wrap(bytes), offsets)
         assertArrayEquals(webp(100, 100, 11, 100), bytes)
     }
 
@@ -90,5 +91,21 @@ class FrameDelaysTest {
         val png = resource("still.png")
         assertTrue(gifDelays(png).isEmpty())
         assertTrue(webpDurations(png).isEmpty())
+    }
+
+    @Test fun zeroSizeExtensionDoesNotDesyncTheWalk() {
+        // An application extension whose first size byte is the terminator, before a frame with a 0 delay.
+        val good = gif(0)
+        val bytes = Buffer().write(good, 0, 19).writeByte(0x21).writeByte(0xFF).writeByte(0)
+            .write(good, 19, good.size - 19).readByteArray()
+        assertEquals(1, gifDelays(bytes).size)
+    }
+
+    @Test fun fixSkipsOffsetsPastTheEnd() {
+        val bytes = gif(0)
+        val offsets = gifDelays(bytes)
+        val shrunk = ByteBuffer.wrap(bytes, 0, offsets[0].toInt() + 1).slice()
+        FrameDelays.fixGif(shrunk, offsets)
+        assertArrayEquals(gif(0), bytes)
     }
 }

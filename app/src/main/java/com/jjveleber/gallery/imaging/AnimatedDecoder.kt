@@ -88,7 +88,7 @@ class AnimatedDecoder(
 
     /** An [AnimatedImageDrawable] whose frames are decoded at the request size. */
     private fun decodeGif(): Drawable {
-        val src = delayFixedBytes()?.let { ImageDecoder.createSource(ByteBuffer.wrap(it)) } ?: imageDecoderSource()
+        val src = delayFixedBytes()?.let { ImageDecoder.createSource(it) } ?: imageDecoderSource()
         return ImageDecoder.decodeDrawable(src) { decoder, info, _ -> decoder.fitToRequest(info.size.width, info.size.height) }
     }
 
@@ -98,16 +98,44 @@ class AnimatedDecoder(
             ?: options.getExtra(SourceKey).let { options.context.contentResolver.openInputStream(Uri.parse(it)) ?: throw FileNotFoundException(it) }
 
     /**
-     * The file's bytes with its too-short frame delays raised (see [FrameDelays]), or null when it has none (or cannot
-     * be read for the check), so the decoder reads the file itself. Finding them reads the file once more.
+     * The file's bytes with its too-short frame delays raised (see [FrameDelays]), or null when it has none, or it
+     * cannot be read or copied, so the decoder reads the file itself. Finding them reads the file once more.
+     *
+     * A GIF's copy is a direct buffer, outside the Java heap: the drawable holds it for as long as it lives, and a grid
+     * of animated GIFs would otherwise run the heap out. A WebP's copy is on the heap, because APNG4Android reads a
+     * ByteBuffer through its backing array.
      */
-    private fun delayFixedBytes(): ByteArray? = try {
+    private fun delayFixedBytes(): ByteBuffer? = try {
         val gif = kind == ImageKind.AnimatedGif
         val offsets = openFile().source().buffer().use { if (gif) FrameDelays.shortGifDelays(it) else FrameDelays.shortWebpDurations(it) }
         if (offsets.isEmpty()) null
-        else openFile().use { it.readBytes() }.also { if (gif) FrameDelays.fixGif(it, offsets) else FrameDelays.fixWebp(it, offsets) }
+        else readFile(direct = gif).also { if (gif) FrameDelays.fixGif(it, offsets) else FrameDelays.fixWebp(it, offsets) }
     } catch (e: IOException) {
         null
+    } catch (e: OutOfMemoryError) {
+        null // Too big to copy: play it as written rather than fail.
+    }
+
+    /** The whole file in one buffer, read straight into it so there is no second copy. */
+    private fun readFile(direct: Boolean): ByteBuffer {
+        val file = source.fileOrNull()
+        val pfd = if (file == null) {
+            val uri = options.getExtra(SourceKey)
+            options.context.contentResolver.openFileDescriptor(Uri.parse(uri), "r") ?: throw FileNotFoundException(uri)
+        } else null
+        val stream = file?.let { FileInputStream(it.toFile()) } ?: FileInputStream(pfd!!.fileDescriptor)
+        try {
+            val channel = stream.channel
+            val size = channel.size()
+            if (size > Int.MAX_VALUE) throw IOException("File too large")
+            val buffer = if (direct) ByteBuffer.allocateDirect(size.toInt()) else ByteBuffer.allocate(size.toInt())
+            while (buffer.hasRemaining() && channel.read(buffer) >= 0) Unit
+            buffer.flip()
+            return buffer
+        } finally {
+            stream.close()
+            pfd?.close()
+        }
     }
 
     /**
@@ -118,7 +146,8 @@ class AnimatedDecoder(
         if (kind == ImageKind.AnimatedWebp) {
             delayFixedBytes()?.let { bytes ->
                 return object : ByteBufferLoader() {
-                    override fun getByteBuffer(): ByteBuffer = ByteBuffer.wrap(bytes)
+                    // A view per reader: each one sets its own position.
+                    override fun getByteBuffer(): ByteBuffer = bytes.duplicate()
                 }
             }
         }
