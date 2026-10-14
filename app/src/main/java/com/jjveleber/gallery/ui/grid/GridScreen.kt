@@ -7,12 +7,14 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -36,12 +38,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -49,14 +53,18 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import com.jjveleber.gallery.imaging.AnimatedRegistry
-import com.jjveleber.gallery.imaging.imageRequest
+import com.jjveleber.gallery.imaging.gridRequest
+import com.jjveleber.gallery.imaging.isMediaStoreUri
+import com.jjveleber.gallery.imaging.mightBeAnimated
 import com.jjveleber.gallery.model.GridSize
 import com.jjveleber.gallery.model.ImageItem
 import com.jjveleber.gallery.model.SortOrder
@@ -103,23 +111,65 @@ fun GridScreen(vm: GalleryViewModel, registry: AnimatedRegistry) {
                 Button(onClick = vm::changeFolder) { Text("Change folder") }
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(settings.gridSize.cellDp.dp),
-                state = gridState,
-                contentPadding = PaddingValues(4.dp),
-                modifier = Modifier
-                    .padding(padding)
-                    .fillMaxSize()
-                    .background(Color(0xFF101010))
-                    .pinchSteps { zoom -> vm.updateSettings { it.copy(gridSize = currentSize.step(zoom)) } },
-            ) {
-                itemsIndexed(items, key = { _, item -> item.uri }) { index, item ->
-                    Thumbnail(item, settings.animateGrid, registry) { vm.openViewer(index, play = false) }
+            BoxWithConstraints(Modifier.padding(padding).fillMaxSize().background(Color(0xFF101010))) {
+                val density = LocalDensity.current
+                val availablePx = constraints.maxWidth - with(density) { (GRID_PADDING * 2).roundToPx() }
+                val columns = gridColumns(availablePx, with(density) { settings.gridSize.cellDp.dp.roundToPx() })
+                // Square cells; the image area is the cell minus the thumbnail's 2 dp padding on each side.
+                val thumbPx = (availablePx / columns - with(density) { 4.dp.roundToPx() }).coerceAtLeast(1)
+                PrefetchAhead(gridState, items, settings.animateGrid, thumbPx, registry)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
+                    state = gridState,
+                    contentPadding = PaddingValues(GRID_PADDING),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pinchSteps { zoom -> vm.updateSettings { it.copy(gridSize = currentSize.step(zoom)) } },
+                ) {
+                    itemsIndexed(items, key = { _, item -> item.uri }) { index, item ->
+                        Thumbnail(item, settings.animateGrid, thumbPx, registry) { vm.openViewer(index, play = false) }
+                    }
                 }
             }
         }
     }
     if (showSettings) SettingsSheet(settings, vm::updateSettings) { showSettings = false }
+}
+
+private val GRID_PADDING = 4.dp
+
+/**
+ * Loads about two screens of thumbnails past the visible cells ([prefetchRange]), in the scroll direction, into the
+ * memory cache, so they show at once when scrolled in. Builds the same request as each cell.
+ *
+ * With [animate] on, only requests that cannot start an animated decode are prefetched: MediaStore files whose type
+ * cannot animate, or that the registry already knows are static. Those are plain system thumbnails. Other files are
+ * left to their cells, so prefetch never adds animated decodes.
+ */
+@Composable
+private fun PrefetchAhead(state: LazyGridState, items: List<ImageItem>, animate: Boolean, sizePx: Int, registry: AnimatedRegistry) {
+    val context = LocalContext.current
+    LaunchedEffect(state, items, animate, sizePx) {
+        val loader = SingletonImageLoader.get(context)
+        var previousFirst = -1
+        var forward = true
+        var previous = IntRange.EMPTY
+        snapshotFlow {
+            val visible = state.layoutInfo.visibleItemsInfo
+            (visible.firstOrNull()?.index ?: 0) to (visible.lastOrNull()?.index ?: -1)
+        }.collect { (first, last) ->
+            if (previousFirst >= 0 && first != previousFirst) forward = first > previousFirst
+            previousFirst = first
+            val range = prefetchRange(first, last, items.size, forward)
+            // Nearest cells first; cells already requested for the previous position are skipped.
+            for (i in if (forward) range else range.reversed()) {
+                val item = items[i]
+                val safe = !animate || (isMediaStoreUri(item.uri) && (!mightBeAnimated(item.mime) || registry.isStatic(item.uri)))
+                if (safe && i !in previous) loader.enqueue(gridRequest(context, item, animate, sizePx))
+            }
+            previous = range
+        }
+    }
 }
 
 /** Reports the total zoom of each two-finger gesture, and keeps two-finger moves from scrolling the grid. */
@@ -141,12 +191,12 @@ private fun Modifier.pinchSteps(onZoom: (Float) -> Unit): Modifier = pointerInpu
 }
 
 @Composable
-private fun Thumbnail(item: ImageItem, animate: Boolean, registry: AnimatedRegistry, onClick: () -> Unit) {
+private fun Thumbnail(item: ImageItem, animate: Boolean, sizePx: Int, registry: AnimatedRegistry, onClick: () -> Unit) {
     val context = LocalContext.current
     var failed by remember(item.uri, animate) { mutableStateOf(false) }
     var animated by remember(item.uri) { mutableStateOf(false) }
-    val request = remember(item.uri, animate) {
-        imageRequest(context, item.uri, animate, object : ImageRequest.Listener {
+    val request = remember(item.uri, animate, sizePx) {
+        gridRequest(context, item, animate, sizePx, object : ImageRequest.Listener {
             override fun onSuccess(request: ImageRequest, result: SuccessResult) {
                 failed = false
                 animated = registry.isAnimated(item.uri)
