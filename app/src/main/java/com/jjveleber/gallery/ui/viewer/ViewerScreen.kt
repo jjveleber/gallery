@@ -1,12 +1,15 @@
 package com.jjveleber.gallery.ui.viewer
 
 import android.app.Activity
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -42,6 +45,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -57,12 +62,14 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import coil3.DrawableImage
+import coil3.Image as CoilImage
 import coil3.SingletonImageLoader
-import coil3.compose.AsyncImage
 import coil3.compose.asPainter
 import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.toBitmap
 import com.jjveleber.gallery.imaging.imageRequest
 import com.jjveleber.gallery.model.ImageItem
 import com.jjveleber.gallery.model.Transition
@@ -106,17 +113,21 @@ fun ViewerScreen(
     var overlay by remember { mutableStateOf(true) }
     var showSettings by remember { mutableStateOf(false) }
     var zoomed by remember { mutableStateOf(false) }
-    var fadingFrom by remember { mutableStateOf<ImageItem?>(null) }
+    var fadingFrom by remember { mutableStateOf<ImageBitmap?>(null) }
+    // The decoded image of each page near the current one, so a crossfade can show the outgoing image as it
+    // was instead of requesting it again (animated results are never memory cached).
+    val loaded = remember { HashMap<String, CoilImage>() }
     val fade = remember { Animatable(0f) }
 
     val advance by rememberUpdatedState<suspend () -> Unit>(newValue = {
         if (n > 1) {
             if (settings.transition == Transition.Crossfade) {
-                // Draw the outgoing image on top and fade it out over the incoming page.
-                fadingFrom = items[LoopPaging.indexOf(pager.currentPage, n)]
+                // Draw a snapshot of the outgoing image on top and fade it out over the incoming page.
+                val snapshot = loaded[items[LoopPaging.indexOf(pager.currentPage, n)].uri]?.snapshot()
+                fadingFrom = snapshot
                 fade.snapTo(1f)
                 pager.scrollToPage(pager.currentPage + 1)
-                fade.animateTo(0f, tween(400))
+                if (snapshot != null) fade.animateTo(0f, tween(400))
                 fadingFrom = null
             } else {
                 pager.scrollToPage(pager.currentPage + 1)
@@ -131,6 +142,8 @@ fun ViewerScreen(
         timer.setEnabled(settings.autoAdvance)
     }
     LaunchedEffect(current) {
+        val near = listOf(current - 1, current, current + 1).map { items[Math.floorMod(it, n)].uri }.toSet()
+        loaded.keys.retainAll(near)
         vm.viewerShowing(current)
         zoomed = false
         timer.reset()
@@ -169,7 +182,9 @@ fun ViewerScreen(
         ) { page ->
             ViewerPage(
                 item = items[LoopPaging.indexOf(page, n)],
-                animate = settings.animateFullScreen,
+                // Only the settled page animates: its neighbours are composed but off screen, so they show the still.
+                animate = settings.animateFullScreen && page == pager.settledPage,
+                onLoaded = { loaded[it.first] = it.second },
                 onZoomChange = { if (page == pager.currentPage) zoomed = it },
                 onTap = { x, width ->
                     // While zoomed, every tap toggles the overlay; navigation waits until zoomed out.
@@ -183,9 +198,9 @@ fun ViewerScreen(
                 },
             )
         }
-        fadingFrom?.let { item ->
-            AsyncImage(
-                model = imageRequest(context, item.uri, settings.animateFullScreen),
+        fadingFrom?.let { bitmap ->
+            Image(
+                bitmap = bitmap,
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = fade.value },
@@ -218,6 +233,7 @@ fun ViewerScreen(
 private fun ViewerPage(
     item: ImageItem,
     animate: Boolean,
+    onLoaded: (Pair<String, CoilImage>) -> Unit,
     onZoomChange: (Boolean) -> Unit,
     onTap: (x: Float, width: Float) -> Unit,
 ) {
@@ -225,6 +241,7 @@ private fun ViewerPage(
     var failed by remember(item.uri) { mutableStateOf(false) }
     var width by remember { mutableFloatStateOf(1f) }
     val tap by rememberUpdatedState(onTap)
+    val onLoadedNow by rememberUpdatedState(onLoaded)
     val state = rememberZoomableImageState()
     // userZoom is 1 at the fitted size. zoomFraction is no use here: it reads 1 when the zoom range is empty,
     // as for images smaller than the screen, which would lock the pager.
@@ -232,6 +249,10 @@ private fun ViewerPage(
     LaunchedEffect(zoomed) { onZoomChange(zoomed) }
     val request = remember(item.uri, animate) {
         imageRequest(context, item.uri, animate, object : ImageRequest.Listener {
+            override fun onSuccess(request: ImageRequest, result: SuccessResult) {
+                onLoadedNow(item.uri to result.image)
+            }
+
             override fun onError(request: ImageRequest, result: ErrorResult) {
                 failed = true
             }
@@ -262,6 +283,34 @@ private fun ViewerPage(
         }
     }
 }
+
+/**
+ * A bitmap of the image as it looks right now (the current frame of an animation), at most 2048 px on a side.
+ * A drawable that is on screen is drawn at its current bounds: resizing an animated drawable restarts its decoder
+ * and blanks the frame.
+ */
+private fun CoilImage.snapshot(): ImageBitmap? = runCatching {
+    val drawable = (this as? DrawableImage)?.drawable
+    val bounds = drawable?.bounds
+    if (drawable != null && bounds != null && !bounds.isEmpty) {
+        val scale = minOf(1f, 2048f / maxOf(bounds.width(), bounds.height()))
+        val bitmap = Bitmap.createBitmap(
+            (bounds.width() * scale).toInt().coerceAtLeast(1),
+            (bounds.height() * scale).toInt().coerceAtLeast(1),
+            Bitmap.Config.ARGB_8888,
+        )
+        val canvas = Canvas(bitmap)
+        canvas.scale(scale, scale)
+        canvas.translate(-bounds.left.toFloat(), -bounds.top.toFloat())
+        drawable.draw(canvas)
+        bitmap.asImageBitmap()
+    } else if (width > 0 && height > 0) {
+        val scale = minOf(1f, 2048f / maxOf(width, height))
+        toBitmap((width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1)).asImageBitmap()
+    } else {
+        null
+    }
+}.getOrNull()
 
 /**
  * Telephoto tiles images with BitmapRegionDecoder, which cannot read BMP: the tiles stay black. Its only
