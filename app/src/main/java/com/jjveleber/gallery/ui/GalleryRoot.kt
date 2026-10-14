@@ -133,7 +133,7 @@ private fun DeleteConfirmation(vm: GalleryViewModel) {
         val r = request ?: return@LaunchedEffect
         if (r.kind != DeleteKind.Trash || r.launched) return@LaunchedEffect
         try {
-            trash.launch(IntentSenderRequest.Builder(trashRequest(context.contentResolver, r.uris)).build())
+            trash.launch(IntentSenderRequest.Builder(trashRequest(context.contentResolver, r.nextBatch)).build())
             vm.trashLaunched()
         } catch (e: Exception) {
             vm.cancelDelete()
