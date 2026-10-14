@@ -10,5 +10,8 @@ class AnimatedRegistry {
         this.animated[key] = animated
     }
 
+    /** True only once the file has been sniffed and found static. */
+    fun isStatic(key: String): Boolean = animated[key] == false
+
     fun isAnimated(key: String): Boolean = animated[key] == true
 }

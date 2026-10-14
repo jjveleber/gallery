@@ -62,6 +62,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import coil3.BitmapImage
 import coil3.DrawableImage
 import coil3.Image as CoilImage
 import coil3.SingletonImageLoader
@@ -70,6 +71,7 @@ import coil3.request.ErrorResult
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
 import coil3.toBitmap
+import com.jjveleber.gallery.imaging.AnimatedRegistry
 import com.jjveleber.gallery.imaging.imageRequest
 import com.jjveleber.gallery.model.ImageItem
 import com.jjveleber.gallery.model.Transition
@@ -94,6 +96,7 @@ import me.saket.telephoto.zoomable.rememberZoomableImageState
 @Composable
 fun ViewerScreen(
     vm: GalleryViewModel,
+    registry: AnimatedRegistry,
     startIndex: Int,
     onBrowseFolder: (FolderLocation?) -> Unit,
     onExit: () -> Unit,
@@ -182,6 +185,7 @@ fun ViewerScreen(
         ) { page ->
             ViewerPage(
                 item = items[LoopPaging.indexOf(page, n)],
+                registry = registry,
                 // Only the settled page animates: its neighbours are composed but off screen, so they show the still.
                 animate = settings.animateFullScreen && page == pager.settledPage,
                 onLoaded = { loaded[it.first] = it.second },
@@ -232,6 +236,7 @@ fun ViewerScreen(
 @Composable
 private fun ViewerPage(
     item: ImageItem,
+    registry: AnimatedRegistry,
     animate: Boolean,
     onLoaded: (Pair<String, CoilImage>) -> Unit,
     onZoomChange: (Boolean) -> Unit,
@@ -248,7 +253,10 @@ private fun ViewerPage(
     val zoomed = state.zoomableState.contentTransformation.scaleMetadata.userZoom > 1.01f
     LaunchedEffect(zoomed) { onZoomChange(zoomed) }
     val request = remember(item.uri, animate) {
-        imageRequest(context, item.uri, animate, object : ImageRequest.Listener {
+        // Static files decode the same either way: keep their request (and cache key) stable so a page that
+        // settles does not reload and flash black. Only animated files swap from the still to the animation.
+        val animateRequest = animate && !registry.isStatic(item.uri)
+        imageRequest(context, item.uri, animateRequest, object : ImageRequest.Listener {
             override fun onSuccess(request: ImageRequest, result: SuccessResult) {
                 onLoadedNow(item.uri to result.image)
             }
@@ -306,7 +314,11 @@ private fun CoilImage.snapshot(): ImageBitmap? = runCatching {
         bitmap.asImageBitmap()
     } else if (width > 0 && height > 0) {
         val scale = minOf(1f, 2048f / maxOf(width, height))
-        toBitmap((width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1)).asImageBitmap()
+        val w = (width * scale).toInt().coerceAtLeast(1)
+        val h = (height * scale).toInt().coerceAtLeast(1)
+        val source = (this as? BitmapImage)?.bitmap
+        // createScaledBitmap also copes with HARDWARE bitmaps; other image types go through Coil.
+        if (source != null) Bitmap.createScaledBitmap(source, w, h, true).asImageBitmap() else toBitmap(w, h).asImageBitmap()
     } else {
         null
     }

@@ -82,6 +82,7 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
         }
         is Screen.Viewer -> ViewerScreen(
             vm,
+            registry,
             s.startIndex,
             onBrowseFolder = { hint ->
                 browseTree.launch(hint?.let { DocumentsContract.buildDocumentUri(EXTERNAL_STORAGE_AUTHORITY, it.externalStorageDocId()) })
