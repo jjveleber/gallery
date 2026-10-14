@@ -103,6 +103,7 @@ fun ViewerScreen(
 ) {
     val items by vm.items.collectAsState()
     val settings by vm.settings.collectAsState()
+    val playing by vm.playing.collectAsState()
     val openWith by vm.openWith.collectAsState()
     val close = { if (vm.closeViewer()) onExit() }
     BackHandler(onBack = close)
@@ -140,9 +141,9 @@ fun ViewerScreen(
     // Advance in its own coroutine: the page change resets the timer, which must not cancel the fade.
     val timer = remember { AutoAdvanceTimer(scope) { scope.launch { advance() } } }
 
-    LaunchedEffect(settings.autoAdvance, settings.intervalSec) {
+    LaunchedEffect(playing, settings.intervalSec) {
         timer.setInterval(settings.intervalSec * 1000L)
-        timer.setEnabled(settings.autoAdvance)
+        timer.setEnabled(playing)
     }
     LaunchedEffect(current) {
         val near = listOf(current - 1, current, current + 1).map { items[Math.floorMod(it, n)].uri }.toSet()
@@ -174,7 +175,7 @@ fun ViewerScreen(
             timer.setEnabled(false)
         }
     }
-    ImmersiveWindow(keepScreenOn = settings.autoAdvance)
+    ImmersiveWindow(keepScreenOn = playing)
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         HorizontalPager(
@@ -219,11 +220,11 @@ fun ViewerScreen(
             ViewerOverlay(
                 name = items[current].name,
                 position = "${current + 1} / $n",
-                playing = settings.autoAdvance,
+                playing = playing,
                 intervalSec = settings.intervalSec,
                 showBrowse = openWith?.single == true,
                 onBack = close,
-                onPlayPause = { vm.updateSettings { it.copy(autoAdvance = !it.autoAdvance) } },
+                onPlayPause = vm::togglePlaying,
                 onInterval = { vm.updateSettings { it.copy(intervalSec = nextInterval(it.intervalSec)) } },
                 onSettings = { showSettings = true },
                 onBrowse = { onBrowseFolder(openWith?.folderHint) },

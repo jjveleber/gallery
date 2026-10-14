@@ -12,7 +12,6 @@ data class Settings(
     val gridSize: GridSize = GridSize.M,
     val animateGrid: Boolean = false,
     val animateFullScreen: Boolean = true,
-    val autoAdvance: Boolean = false,
     val intervalSec: Int = 5,
     val transition: Transition = Transition.Crossfade,
     /** The last folder opened from the folder list, reopened on the next launch. */

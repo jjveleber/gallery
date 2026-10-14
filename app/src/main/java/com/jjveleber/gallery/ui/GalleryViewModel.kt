@@ -52,6 +52,10 @@ class GalleryViewModel(
     private val _screen = MutableStateFlow<Screen>(Screen.Loading)
     val screen: StateFlow<Screen> = _screen.asStateFlow()
 
+    private val _playing = MutableStateFlow(false)
+    /** Whether the viewer's slideshow is running. Only Play from the grid starts it; it is never saved. */
+    val playing: StateFlow<Boolean> = _playing.asStateFlow()
+
     private val _items = MutableStateFlow<List<ImageItem>>(emptyList())
     /** The current images in display order. */
     val items: StateFlow<List<ImageItem>> = _items.asStateFlow()
@@ -139,6 +143,7 @@ class GalleryViewModel(
                 showHome()
             } else {
                 _openWith.value = OpenWithState(single = false, incomingName = incoming, folderHint = null)
+                _playing.value = false
                 _screen.value = Screen.Viewer(sorted.indexOfFirst { it.name == incoming }.coerceAtLeast(0))
             }
         }
@@ -231,6 +236,7 @@ class GalleryViewModel(
                     _items.value = sorted
                     _folderName.value = result.folderName
                     _openWith.value = OpenWithState(single = false, incomingName = sorted[start].name, folderHint = null)
+                    _playing.value = false
                     _screen.value = Screen.Viewer(start)
                 }
                 is OpenWithResult.Single -> {
@@ -238,6 +244,7 @@ class GalleryViewModel(
                     _items.value = unsorted
                     _folderName.value = ""
                     _openWith.value = OpenWithState(single = true, incomingName = result.item.name, folderHint = result.folderHint)
+                    _playing.value = false
                     _screen.value = Screen.Viewer(0)
                 }
             }
@@ -245,9 +252,13 @@ class GalleryViewModel(
     }
 
     fun openViewer(index: Int, play: Boolean) {
-        if (play) updateSettings { it.copy(autoAdvance = true) }
+        _playing.value = play
         _lastViewedIndex.value = index
         _screen.value = Screen.Viewer(index)
+    }
+
+    fun togglePlaying() {
+        _playing.value = !_playing.value
     }
 
     fun viewerShowing(index: Int) {
@@ -256,6 +267,7 @@ class GalleryViewModel(
 
     /** Returns true when the activity should finish instead (opened through "Open with"). */
     fun closeViewer(): Boolean {
+        _playing.value = false
         if (_openWith.value != null) return true
         _screen.value = Screen.Grid
         return false

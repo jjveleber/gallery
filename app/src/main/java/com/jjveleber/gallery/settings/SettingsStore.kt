@@ -51,7 +51,6 @@ private val RANDOM_SEED = longPreferencesKey("random_seed")
 private val GRID_SIZE = stringPreferencesKey("grid_size")
 private val ANIMATE_GRID = booleanPreferencesKey("animate_grid")
 private val ANIMATE_FULL_SCREEN = booleanPreferencesKey("animate_full_screen")
-private val AUTO_ADVANCE = booleanPreferencesKey("auto_advance")
 private val INTERVAL_SEC = intPreferencesKey("interval_sec")
 private val TRANSITION = stringPreferencesKey("transition")
 private val LAST_FOLDER_VOLUME = stringPreferencesKey("last_folder_volume")
@@ -68,7 +67,6 @@ fun Preferences.toSettings(): Settings {
         gridSize = enumOr(this[GRID_SIZE], d.gridSize),
         animateGrid = this[ANIMATE_GRID] ?: d.animateGrid,
         animateFullScreen = this[ANIMATE_FULL_SCREEN] ?: d.animateFullScreen,
-        autoAdvance = this[AUTO_ADVANCE] ?: d.autoAdvance,
         intervalSec = this[INTERVAL_SEC]?.takeIf { it in INTERVALS_SEC } ?: d.intervalSec,
         transition = enumOr(this[TRANSITION], d.transition),
         lastFolder = lastFolder(),
@@ -88,7 +86,6 @@ private fun Settings.writeTo(prefs: MutablePreferences) {
     prefs[GRID_SIZE] = gridSize.name
     prefs[ANIMATE_GRID] = animateGrid
     prefs[ANIMATE_FULL_SCREEN] = animateFullScreen
-    prefs[AUTO_ADVANCE] = autoAdvance
     prefs[INTERVAL_SEC] = intervalSec
     prefs[TRANSITION] = transition.name
     if (lastFolder == null) {

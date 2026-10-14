@@ -39,8 +39,8 @@ class SettingsStoreTest {
         val file = File(tmp.root, "corrupt.preferences_pb").apply { writeBytes(byteArrayOf(0x7f, 0x01, 0x02, 0x03, 0x04)) }
         val store = DataStoreSettingsStore(settingsDataStore(scope) { file })
         assertEquals(Settings(), store.settings.first())
-        store.update { it.copy(autoAdvance = true) }
-        assertEquals(true, store.settings.first().autoAdvance)
+        store.update { it.copy(intervalSec = 30) }
+        assertEquals(30, store.settings.first().intervalSec)
     }
 
     @Test fun defaultsWhenEmpty() = runBlocking {
@@ -53,7 +53,6 @@ class SettingsStoreTest {
             gridSize = GridSize.XL,
             animateGrid = true,
             animateFullScreen = false,
-            autoAdvance = true,
             intervalSec = 120,
             transition = Transition.None,
             lastFolder = FolderRef("1a2b-3c4d", "DCIM/Trip_1/"),
@@ -66,8 +65,8 @@ class SettingsStoreTest {
     @Test fun updateTransformsCurrentValue() = runBlocking {
         val store = store()
         store.update { it.copy(intervalSec = 30) }
-        store.update { it.copy(autoAdvance = true) }
-        assertEquals(Settings(intervalSec = 30, autoAdvance = true), store.settings.first())
+        store.update { it.copy(transition = Transition.None) }
+        assertEquals(Settings(intervalSec = 30, transition = Transition.None), store.settings.first())
     }
 
     @Test fun unknownEnumNamesFallBackToDefaults() {

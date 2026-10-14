@@ -31,7 +31,6 @@ fun SettingsSheet(settings: Settings, onUpdate: ((Settings) -> Settings) -> Unit
             SwitchRow("Animate thumbnails", settings.animateGrid) { v -> onUpdate { it.copy(animateGrid = v) } }
             Text("Full screen", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
             SwitchRow("Animate images", settings.animateFullScreen) { v -> onUpdate { it.copy(animateFullScreen = v) } }
-            SwitchRow("Auto advance", settings.autoAdvance) { v -> onUpdate { it.copy(autoAdvance = v) } }
             Text("Interval", modifier = Modifier.padding(top = 8.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 INTERVALS_SEC.forEach { sec ->

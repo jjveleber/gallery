@@ -47,11 +47,11 @@ Optional: once installed, you can go back to **Apps from Unknown Sources** and t
 - **Folders:** with access allowed, Gallery starts with a list of every folder that has images, with how many images are in it (including its subfolders) and a cover picture. A folder that only holds subfolders with images, such as Pictures, is listed too. Tap a folder to see it and all its subfolders. Gallery reopens the last folder you opened from this list the next time you start it. Tap **Folder** in the grid top bar to get back to the list.
 - **Browse other folder:** if a folder is missing from the list (for example it has a `.nomedia` file, or it is on storage the tablet does not index), tap **Browse other folder** at the top of the list and pick it in the system picker. Folders picked this way are not reopened on the next start.
 - **Grid:** pinch to change the thumbnail size, or use the **+** icon (Size) in the top bar. The **Sort** icon in the top bar offers name, date modified, folder path, file size and random (with **Reshuffle**), ascending or descending. Animated images show an **ANIM** badge unless **Animate thumbnails** is on in Settings (the gear icon).
-- **Full screen:** tap a thumbnail. Swipe, or tap the left or right edge, to move between images; it wraps around at the ends. Pinch or double-tap to zoom. Tap the middle to show the controls: **Play**/**Pause** auto advance, the interval (tap to change), and Settings.
+- **Full screen:** tap a thumbnail (it opens static; only **Play** in the grid starts a slideshow). Swipe, or tap the left or right edge, to move between images; it wraps around at the ends. Pinch or double-tap to zoom. Tap the middle to show the controls: **Play**/**Pause** auto advance, the interval (tap to change), and Settings.
 - **Play** (the play icon in the grid top bar) starts a slideshow from the first image.
 - **Open with:** works from the Fire **Files** app and from ES File Explorer. Long-press an image, choose **Open with**, then **Gallery**. With photo access allowed you can swipe through the other images in the same folder. If you deny it, or the app cannot work out or list the folder, a **Browse this folder** button appears: tap it and pick the folder once.
 
-Your sort order and grid size (top bar), the options in the Settings sheet (animation switches, auto advance, interval, transition) and the last folder you opened from the folder list are all saved between launches.
+Your sort order and grid size (top bar), the options in the Settings sheet (animation switches, interval, transition) and the last folder you opened from the folder list are all saved between launches.
 
 Known limitation: with **Animate thumbnails** on, a grid with many large animated GIFs can use a lot of memory.
 

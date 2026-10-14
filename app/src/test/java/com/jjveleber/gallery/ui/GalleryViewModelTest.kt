@@ -131,14 +131,47 @@ class GalleryViewModelTest {
         assertNotEquals(before, store.state.value.sort.randomSeed)
     }
 
-    @Test fun openViewerRecordsIndexAndPlayTurnsOnAutoAdvance() = runTest {
+    @Test fun openViewerRecordsIndex() = runTest {
         val vm = vm()
         vm.openViewer(3, play = false)
         assertEquals(Screen.Viewer(3), vm.screen.value)
         assertEquals(3, vm.lastViewedIndex.value)
-        assertFalse(store.state.value.autoAdvance)
+    }
+
+    @Test fun openViewerSetsPlayingEveryTime() = runTest {
+        val vm = vm()
+        assertFalse(vm.playing.value)
         vm.openViewer(0, play = true)
-        assertTrue(store.state.value.autoAdvance)
+        assertTrue(vm.playing.value)
+        vm.closeViewer()
+        vm.openViewer(4, play = false)
+        assertFalse(vm.playing.value)
+    }
+
+    @Test fun togglePlayingFlipsIt() = runTest {
+        val vm = vm()
+        vm.openViewer(0, play = false)
+        vm.togglePlaying()
+        assertTrue(vm.playing.value)
+        vm.togglePlaying()
+        assertFalse(vm.playing.value)
+    }
+
+    @Test fun closeViewerStopsPlaying() = runTest {
+        val vm = vm()
+        vm.openViewer(0, play = true)
+        vm.closeViewer()
+        assertFalse(vm.playing.value)
+    }
+
+    @Test fun openWithLaunchOpensStatic() = runTest {
+        val siblings = listOf(item("a.jpg"), item("b.jpg"))
+        resolver.result = OpenWithResult.Resolved(siblings, startUri = siblings[0].uri, folderName = "Trip")
+        val vm = vm()
+        vm.openViewer(0, play = true)
+        vm.openWith("content://x/a", mayReadMedia = true)
+        assertEquals(Screen.Viewer(0), vm.screen.value)
+        assertFalse(vm.playing.value)
     }
 
     @Test fun closeViewerReturnsToGrid() = runTest {
