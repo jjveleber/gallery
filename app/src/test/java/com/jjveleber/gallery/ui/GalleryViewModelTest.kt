@@ -277,6 +277,15 @@ class GalleryViewModelTest {
         assertEquals(0, library.folderCalls)
     }
 
+    @Test fun startWithoutRestoringShowsFolderListAndKeepsLastFolder() = runTest {
+        store.state.value = Settings(lastFolder = trip)
+        library.folderList = listOf(tripFolder)
+        val vm = vm()
+        vm.start(mayReadMedia = true, restoreLast = false)
+        assertEquals(Screen.Folders(listOf(tripFolder)), vm.screen.value)
+        assertEquals(trip, store.state.value.lastFolder)
+    }
+
     @Test fun startWithEmptiedLastFolderShowsFolderListAndForgetsIt() = runTest {
         store.state.value = Settings(lastFolder = trip)
         library.folderList = listOf(tripFolder)

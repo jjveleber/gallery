@@ -9,6 +9,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -101,5 +102,19 @@ class CrashLogTest {
 
         assertNull(log().read())
         assertEquals(0, dir.listFiles()!!.size)
+    }
+
+    @Test
+    fun `a blank file reads as null`() {
+        File(dir, "crash-log.txt").writeText("  \n")
+        assertNull(log().read())
+    }
+
+    @Test
+    fun `an unreadable file reads as null`() {
+        val f = File(dir, "crash-log.txt")
+        f.writeText("something")
+        assumeTrue(f.setReadable(false) && !f.canRead())
+        assertNull(log().read())
     }
 }

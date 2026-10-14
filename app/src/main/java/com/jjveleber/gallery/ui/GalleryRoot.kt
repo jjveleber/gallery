@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -31,7 +32,7 @@ import com.jjveleber.gallery.ui.picker.PickerScreen
 import com.jjveleber.gallery.ui.viewer.ViewerScreen
 
 @Composable
-fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: String?, onFinish: () -> Unit) {
+fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: String?, restoreLast: Boolean, onFinish: () -> Unit) {
     val screen by vm.screen.collectAsState()
     val message by vm.message.collectAsState()
     val context = LocalContext.current
@@ -57,29 +58,30 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
             vm.openWith(openWithUri, mayReadMedia = granted)
             openWithPending = false
         } else {
-            vm.start(mayReadMedia = granted)
+            vm.start(mayReadMedia = granted, restoreLast = restoreLast)
         }
     }
-    // Saved so rotation while the dialog is up does not launch a second request (its result still arrives).
-    var permissionRequested by rememberSaveable { mutableStateOf(false) }
+    // Kept in the ViewModel: it survives rotation (no second request while the dialog is up, its result still
+    // arrives) but not process death, so a restored process asks again instead of staying on a black screen.
     // Photo access is asked for until granted; Android remembers the answer. Denied falls back to the picker.
     LaunchedEffect(openWithUri) {
         if (openWithUri == null && vm.started) return@LaunchedEffect
         if (openWithUri != null && !openWithPending) return@LaunchedEffect
         val granted = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
         when {
-            !granted -> if (!permissionRequested) {
-                permissionRequested = true
+            !granted -> if (!vm.permissionRequested) {
+                vm.permissionRequested = true
                 requestPermission.launch(permission)
             }
             openWithUri != null -> {
                 vm.openWith(openWithUri, mayReadMedia = true)
                 openWithPending = false
             }
-            else -> vm.start(mayReadMedia = true)
+            else -> vm.start(mayReadMedia = true, restoreLast = restoreLast)
         }
     }
 
+    val folderListState = rememberLazyListState()
     if (openWithPending) {
         Box(Modifier.fillMaxSize().background(Color.Black))
         return
@@ -89,7 +91,7 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
             if (s is Screen.Scanning) BackHandler(onBack = vm::cancelScan)
             PickerScreen(s, onPick = { pickTree.launch(null) }, onCancel = vm::cancelScan)
         }
-        is Screen.Folders -> FolderListScreen(s.folders, onOpen = vm::openFolder, onBrowse = { pickTree.launch(null) })
+        is Screen.Folders -> FolderListScreen(s.folders, folderListState, onOpen = vm::openFolder, onBrowse = { pickTree.launch(null) })
         Screen.Loading -> Box(Modifier.fillMaxSize().background(Color.Black))
         Screen.Grid -> {
             BackHandler(onBack = vm::changeFolder)

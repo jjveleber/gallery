@@ -44,7 +44,8 @@ class CrashLog(dir: File, private val deviceInfo: String) {
         }
     }
 
-    fun read(): String? = if (file.isFile) file.readText() else null
+    /** The saved report, or null when there is none, it is blank, or it cannot be read. */
+    fun read(): String? = runCatching { file.readText() }.getOrNull()?.takeIf { it.isNotBlank() }
 
     fun clear() {
         file.delete()

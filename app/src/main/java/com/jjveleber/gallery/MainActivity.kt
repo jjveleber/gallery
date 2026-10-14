@@ -10,6 +10,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -34,10 +35,12 @@ class MainActivity : ComponentActivity() {
                             initializer { GalleryViewModel(container.scanner, container.library, container.openWith, container.settings) }
                         },
                     )
-                    GalleryRoot(vm, container.animated, openWithUri, onFinish = ::finish)
                     // The 64 KB cap keeps this read cheap enough for the main thread. Saved, so closing it
                     // survives rotation.
                     var crashReport by rememberSaveable { mutableStateOf(container.crashLog.read()) }
+                    // After a crash, start at the folder list: the remembered folder may be what crashed.
+                    val restoreLast = remember { crashReport == null }
+                    GalleryRoot(vm, container.animated, openWithUri, restoreLast, onFinish = ::finish)
                     crashReport?.let { report ->
                         CrashReportDialog(
                             report,

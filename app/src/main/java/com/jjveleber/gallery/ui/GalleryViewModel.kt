@@ -84,8 +84,17 @@ class GalleryViewModel(
     /** Bumped whenever a scan or resolve is superseded, so late results from the old one are dropped. */
     private var generation = 0
 
-    /** A normal launch: reopens the remembered folder if it still has images, else shows home. */
-    fun start(mayReadMedia: Boolean) {
+    /**
+     * True once the permission dialog has been requested in this process. Held here, not saved, so a
+     * process death resets it and the request is made again instead of leaving the Loading screen.
+     */
+    var permissionRequested = false
+
+    /**
+     * A normal launch: reopens the remembered folder if it still has images, else shows home.
+     * [restoreLast] is false after a crash, so a folder that crashes cannot loop; it stays remembered.
+     */
+    fun start(mayReadMedia: Boolean, restoreLast: Boolean = true) {
         if (started) return
         started = true
         mediaMode = mayReadMedia
@@ -98,7 +107,7 @@ class GalleryViewModel(
         viewModelScope.launch {
             val last = settingsStore.settings.first().lastFolder
             if (gen != generation) return@launch
-            if (last == null) showHome() else loadFolder(last, restoring = true)
+            if (last == null || !restoreLast) showHome() else loadFolder(last, restoring = true)
         }
     }
 

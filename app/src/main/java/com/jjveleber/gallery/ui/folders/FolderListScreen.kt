@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,7 +39,7 @@ private val COVER = 72.dp
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FolderListScreen(folders: List<MediaFolder>, onOpen: (FolderRef) -> Unit, onBrowse: () -> Unit) {
+fun FolderListScreen(folders: List<MediaFolder>, listState: LazyListState, onOpen: (FolderRef) -> Unit, onBrowse: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -57,7 +58,7 @@ fun FolderListScreen(folders: List<MediaFolder>, onOpen: (FolderRef) -> Unit, on
                 Button(onClick = onBrowse) { Text("Browse other folder") }
             }
         } else {
-            LazyColumn(Modifier.padding(padding).fillMaxSize()) {
+            LazyColumn(Modifier.padding(padding).fillMaxSize(), state = listState) {
                 items(folders, key = { "${it.ref.volume}:${it.ref.relativePath}" }) { folder ->
                     FolderRow(folder) { onOpen(folder.ref) }
                 }
