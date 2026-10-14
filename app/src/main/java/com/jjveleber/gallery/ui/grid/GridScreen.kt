@@ -17,7 +17,6 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -89,7 +88,7 @@ fun GridScreen(vm: GalleryViewModel, registry: AnimatedRegistry) {
                     SortMenu(settings.sort, onChange = vm::setSort, onReshuffle = vm::reshuffle)
                     SizeMenu(settings.gridSize) { size -> vm.updateSettings { it.copy(gridSize = size) } }
                     IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
-                    IconButton(onClick = vm::changeFolder) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Change folder") }
+                    TextButton(onClick = vm::changeFolder) { Text("Folder") }
                 },
             )
         },
