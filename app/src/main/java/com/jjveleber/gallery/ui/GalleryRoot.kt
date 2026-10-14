@@ -34,7 +34,10 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, onFinish: () -
         if (uri != null) vm.pickFolder(uri.toString())
     }
     when (val s = screen) {
-        Screen.Picker, is Screen.Scanning -> PickerScreen(s, onPick = { pickTree.launch(null) }, onCancel = vm::cancelScan)
+        Screen.Picker, is Screen.Scanning -> {
+            if (s is Screen.Scanning) BackHandler(onBack = vm::cancelScan)
+            PickerScreen(s, onPick = { pickTree.launch(null) }, onCancel = vm::cancelScan)
+        }
         Screen.Loading -> Box(Modifier.fillMaxSize().background(Color.Black))
         Screen.Grid -> {
             BackHandler(onBack = vm::changeFolder)

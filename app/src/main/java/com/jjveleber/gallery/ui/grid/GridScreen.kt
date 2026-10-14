@@ -17,7 +17,11 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -77,15 +81,15 @@ fun GridScreen(vm: GalleryViewModel, registry: AnimatedRegistry) {
                 title = {
                     Column {
                         Text(folder, maxLines = 1)
-                        Text("${items.size} images", style = MaterialTheme.typography.bodySmall)
+                        Text(if (items.size == 1) "1 image" else "%,d images".format(items.size), style = MaterialTheme.typography.bodySmall)
                     }
                 },
                 actions = {
-                    TextButton(onClick = { vm.openViewer(0, play = true) }, enabled = items.isNotEmpty()) { Text("Play") }
+                    IconButton(onClick = { vm.openViewer(0, play = true) }, enabled = items.isNotEmpty()) { Icon(Icons.Default.PlayArrow, contentDescription = "Play slideshow") }
                     SortMenu(settings.sort, onChange = vm::setSort, onReshuffle = vm::reshuffle)
                     SizeMenu(settings.gridSize) { size -> vm.updateSettings { it.copy(gridSize = size) } }
                     IconButton(onClick = { showSettings = true }) { Icon(Icons.Default.Settings, contentDescription = "Settings") }
-                    TextButton(onClick = vm::changeFolder) { Text("Change folder") }
+                    IconButton(onClick = vm::changeFolder) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Change folder") }
                 },
             )
         },
@@ -140,7 +144,7 @@ private fun Modifier.pinchSteps(onZoom: (Float) -> Unit): Modifier = pointerInpu
 @Composable
 private fun Thumbnail(item: ImageItem, animate: Boolean, registry: AnimatedRegistry, onClick: () -> Unit) {
     val context = LocalContext.current
-    var failed by remember(item.uri) { mutableStateOf(false) }
+    var failed by remember(item.uri, animate) { mutableStateOf(false) }
     var animated by remember(item.uri) { mutableStateOf(false) }
     val request = remember(item.uri, animate) {
         imageRequest(context, item.uri, animate, object : ImageRequest.Listener {
@@ -187,7 +191,7 @@ private val SortOrder.label: String
 private fun SortMenu(spec: SortSpec, onChange: (SortSpec) -> Unit, onReshuffle: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { open = true }) { Text("Sort: ${spec.order.label}") }
+        IconButton(onClick = { open = true }) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Sort: ${spec.order.label}") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             SortOrder.entries.forEach { order ->
                 DropdownMenuItem(
@@ -225,7 +229,7 @@ private val GridSize.label: String
 private fun SizeMenu(size: GridSize, onChange: (GridSize) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        TextButton(onClick = { open = true }) { Text("Size: ${size.label}") }
+        IconButton(onClick = { open = true }) { Icon(Icons.Default.Add, contentDescription = "Size: ${size.label}") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             GridSize.entries.forEach { s ->
                 DropdownMenuItem(
