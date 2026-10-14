@@ -15,6 +15,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -44,20 +47,29 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
         if (uri != null) vm.browseOpenWithFolder(uri.toString())
     }
 
+    // True from launch until the Open with request has been handed to the ViewModel, so the picker never shows
+    // behind the permission dialog.
+    var openWithPending by rememberSaveable(openWithUri) { mutableStateOf(openWithUri != null) }
     if (openWithUri != null) {
         val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
         val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             vm.openWith(openWithUri, mayReadMedia = granted)
+            openWithPending = false
         }
         LaunchedEffect(openWithUri) {
             if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
                 vm.openWith(openWithUri, mayReadMedia = true)
+                openWithPending = false
             } else {
                 requestPermission.launch(permission)
             }
         }
     }
 
+    if (openWithPending) {
+        Box(Modifier.fillMaxSize().background(Color.Black))
+        return
+    }
     when (val s = screen) {
         Screen.Picker, is Screen.Scanning -> {
             if (s is Screen.Scanning) BackHandler(onBack = vm::cancelScan)

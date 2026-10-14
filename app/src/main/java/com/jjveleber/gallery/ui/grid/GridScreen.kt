@@ -208,7 +208,7 @@ private fun SortMenu(spec: SortSpec, onChange: (SortSpec) -> Unit, onReshuffle: 
                 DropdownMenuItem(text = { Text("Reshuffle") }, onClick = { onReshuffle(); open = false })
             } else {
                 DropdownMenuItem(
-                    text = { Text(if (spec.ascending) "Ascending" else "Descending") },
+                    text = { Text(if (spec.ascending) "Direction: Ascending (tap for Descending)" else "Direction: Descending (tap for Ascending)") },
                     onClick = { onChange(spec.copy(ascending = !spec.ascending)) },
                 )
             }
