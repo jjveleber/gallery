@@ -1,8 +1,11 @@
 package com.jjveleber.gallery.testing
 
+import com.jjveleber.gallery.model.FolderRef
 import com.jjveleber.gallery.model.ImageItem
 import com.jjveleber.gallery.model.Settings
 import com.jjveleber.gallery.scan.FolderScanner
+import com.jjveleber.gallery.scan.MediaFolder
+import com.jjveleber.gallery.scan.MediaLibrary
 import com.jjveleber.gallery.scan.OpenWithResolver
 import com.jjveleber.gallery.scan.OpenWithResult
 import com.jjveleber.gallery.settings.SettingsStore
@@ -27,6 +30,28 @@ class FakeScanner : FolderScanner {
         failWith?.let { throw it }
         progressToReport.forEach(onProgress)
         return result(treeUri).await()
+    }
+}
+
+/** Each folder's images wait until the test completes [result] for it. */
+class FakeLibrary : MediaLibrary {
+    var folderList: List<MediaFolder> = emptyList()
+    var folderCalls = 0
+    var failWith: Exception? = null
+    var foldersFailWith: Exception? = null
+    private val results = mutableMapOf<FolderRef, CompletableDeferred<List<ImageItem>>>()
+
+    fun result(folder: FolderRef) = results.getOrPut(folder) { CompletableDeferred() }
+
+    override suspend fun folders(): List<MediaFolder> {
+        folderCalls++
+        foldersFailWith?.let { throw it }
+        return folderList
+    }
+
+    override suspend fun images(folder: FolderRef): List<ImageItem> {
+        failWith?.let { throw it }
+        return result(folder).await()
     }
 }
 

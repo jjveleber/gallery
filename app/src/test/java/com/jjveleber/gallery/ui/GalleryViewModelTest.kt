@@ -1,12 +1,16 @@
 package com.jjveleber.gallery.ui
 
+import com.jjveleber.gallery.model.FolderRef
 import com.jjveleber.gallery.model.ImageItem
+import com.jjveleber.gallery.model.PRIMARY_VOLUME
 import com.jjveleber.gallery.model.Settings
 import com.jjveleber.gallery.model.SortOrder
 import com.jjveleber.gallery.model.SortSpec
 import com.jjveleber.gallery.scan.FolderLocation
 import com.jjveleber.gallery.scan.FolderScanner
+import com.jjveleber.gallery.scan.MediaFolder
 import com.jjveleber.gallery.scan.OpenWithResult
+import com.jjveleber.gallery.testing.FakeLibrary
 import com.jjveleber.gallery.testing.FakeResolver
 import com.jjveleber.gallery.testing.FakeScanner
 import com.jjveleber.gallery.testing.FakeSettingsStore
@@ -26,13 +30,17 @@ class GalleryViewModelTest {
     @get:Rule val main = MainDispatcherRule()
 
     private val scanner = FakeScanner()
+    private val library = FakeLibrary()
     private val resolver = FakeResolver()
     private val store = FakeSettingsStore()
-    private fun vm() = GalleryViewModel(scanner, resolver, store)
+    private fun vm() = GalleryViewModel(scanner, library, resolver, store)
     private fun GalleryViewModel.names() = items.value.map { it.relPath }
 
-    @Test fun startsAtPicker() = runTest {
-        assertEquals(Screen.Picker, vm().screen.value)
+    private val trip = FolderRef(PRIMARY_VOLUME, "Pictures/Trip/")
+    private val tripFolder = MediaFolder(trip, count = 2, coverUri = "content://media/external_primary/images/media/1", coverMime = "image/jpeg")
+
+    @Test fun startsLoading() = runTest {
+        assertEquals(Screen.Loading, vm().screen.value)
     }
 
     @Test fun pickFolderScansRecursivelyAndShowsSortedGrid() = runTest {
@@ -91,7 +99,7 @@ class GalleryViewModelTest {
                 return scanner.result(treeUri).await()
             }
         }
-        val vm = GalleryViewModel(capturing, resolver, store)
+        val vm = GalleryViewModel(capturing, library, resolver, store)
         vm.pickFolder("tree/a")
         vm.cancelScan()
         late!!.invoke(5)
@@ -200,5 +208,155 @@ class GalleryViewModelTest {
         scanner.result("tree/Empty").complete(emptyList())
         assertEquals("No supported images in this folder", vm.message.value)
         assertEquals(Screen.Picker, vm.screen.value)
+    }
+
+    @Test fun startWithoutPhotoAccessShowsPicker() = runTest {
+        val vm = vm()
+        vm.start(mayReadMedia = false)
+        assertEquals(Screen.Picker, vm.screen.value)
+        assertEquals(0, library.folderCalls)
+    }
+
+    @Test fun startWithPhotoAccessShowsFolderList() = runTest {
+        library.folderList = listOf(tripFolder)
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        assertEquals(Screen.Folders(listOf(tripFolder)), vm.screen.value)
+        assertTrue(vm.started)
+    }
+
+    @Test fun startRunsOnce() = runTest {
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        vm.start(mayReadMedia = true)
+        assertEquals(1, library.folderCalls)
+    }
+
+    @Test fun startReopensLastFolder() = runTest {
+        store.state.value = Settings(lastFolder = trip)
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        assertEquals(Screen.Scanning(0), vm.screen.value)
+        library.result(trip).complete(listOf(item("b10.jpg"), item("day2/b2.jpg")))
+        assertEquals(Screen.Grid, vm.screen.value)
+        assertEquals(listOf("day2/b2.jpg", "b10.jpg"), vm.names())
+        assertEquals("Trip", vm.folderName.value)
+        assertEquals(0, library.folderCalls)
+    }
+
+    @Test fun startWithEmptiedLastFolderShowsFolderListAndForgetsIt() = runTest {
+        store.state.value = Settings(lastFolder = trip)
+        library.folderList = listOf(tripFolder)
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        library.result(trip).complete(emptyList())
+        assertEquals(Screen.Folders(listOf(tripFolder)), vm.screen.value)
+        assertNull(store.state.value.lastFolder)
+    }
+
+    @Test fun startWithUnreadableLastFolderShowsFolderListWithMessage() = runTest {
+        store.state.value = Settings(lastFolder = trip)
+        library.failWith = SecurityException("gone")
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        assertEquals(Screen.Folders(emptyList()), vm.screen.value)
+        assertEquals("Folder no longer available", vm.message.value)
+        assertNull(store.state.value.lastFolder)
+    }
+
+    @Test fun startWithVolumeErrorOnLastFolderFallsBackToFolderList() = runTest {
+        store.state.value = Settings(lastFolder = trip)
+        library.failWith = IllegalArgumentException("Volume not found")
+        library.folderList = listOf(tripFolder)
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        assertEquals(Screen.Folders(listOf(tripFolder)), vm.screen.value)
+        assertNull(store.state.value.lastFolder)
+    }
+
+    @Test fun folderListFailureShowsEmptyList() = runTest {
+        library.foldersFailWith = FileNotFoundException("no cursor")
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        assertEquals(Screen.Folders(emptyList()), vm.screen.value)
+    }
+
+    @Test fun openFolderShowsGridAndRemembersIt() = runTest {
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        vm.openFolder(trip)
+        assertEquals(Screen.Scanning(0), vm.screen.value)
+        library.result(trip).complete(listOf(item("a.jpg")))
+        assertEquals(Screen.Grid, vm.screen.value)
+        assertEquals(trip, store.state.value.lastFolder)
+    }
+
+    @Test fun changeFolderWithPhotoAccessReturnsToRefreshedFolderList() = runTest {
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        vm.openFolder(trip)
+        library.result(trip).complete(listOf(item("a.jpg")))
+        library.folderList = listOf(tripFolder)
+        vm.changeFolder()
+        assertEquals(Screen.Folders(listOf(tripFolder)), vm.screen.value)
+        assertTrue(vm.items.value.isEmpty())
+        assertEquals(2, library.folderCalls)
+    }
+
+    @Test fun cancelScanWithPhotoAccessReturnsToFolderList() = runTest {
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        vm.openFolder(trip)
+        vm.cancelScan()
+        library.result(trip).complete(listOf(item("a.jpg")))
+        assertEquals(Screen.Folders(emptyList()), vm.screen.value)
+        assertTrue(vm.items.value.isEmpty())
+    }
+
+    @Test fun folderFromSystemPickerIsNotRemembered() = runTest {
+        val vm = vm()
+        vm.start(mayReadMedia = true)
+        vm.openFolder(trip)
+        library.result(trip).complete(listOf(item("a.jpg")))
+        vm.pickFolder("tree/Other")
+        scanner.result("tree/Other").complete(listOf(item("b.jpg")))
+        assertEquals(Screen.Grid, vm.screen.value)
+        assertNull(store.state.value.lastFolder)
+        vm.changeFolder()
+        assertEquals(Screen.Folders(emptyList()), vm.screen.value)
+    }
+
+    @Test fun openWithMarksStarted() = runTest {
+        resolver.result = OpenWithResult.Single(item("a.jpg"), null)
+        val vm = vm()
+        vm.openWith("content://x/a", mayReadMedia = false)
+        assertTrue(vm.started)
+    }
+
+    @Test fun openWithPhotoAccessThenEmptyBrowseLandsOnFolderList() = runTest {
+        resolver.result = OpenWithResult.Single(item("b.jpg"), null)
+        val vm = vm()
+        vm.openWith("content://x/b", mayReadMedia = true)
+        vm.browseOpenWithFolder("tree/Empty")
+        scanner.result("tree/Empty").complete(emptyList())
+        assertEquals(Screen.Folders(emptyList()), vm.screen.value)
+    }
+
+    @Test fun openWithPhotoAccessThenFailedBrowseLandsOnFolderList() = runTest {
+        resolver.result = OpenWithResult.Single(item("b.jpg"), null)
+        scanner.failWith = FileNotFoundException("gone")
+        val vm = vm()
+        vm.openWith("content://x/b", mayReadMedia = true)
+        vm.browseOpenWithFolder("tree/Trip")
+        assertEquals(Screen.Folders(emptyList()), vm.screen.value)
+    }
+
+    @Test fun openWithPhotoAccessThenCancelledBrowseLandsOnFolderList() = runTest {
+        resolver.result = OpenWithResult.Single(item("b.jpg"), null)
+        val vm = vm()
+        vm.openWith("content://x/b", mayReadMedia = true)
+        vm.browseOpenWithFolder("tree/Trip")
+        vm.cancelScan()
+        assertEquals(Screen.Folders(emptyList()), vm.screen.value)
     }
 }

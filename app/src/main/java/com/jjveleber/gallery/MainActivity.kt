@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
                 Surface(Modifier.fillMaxSize()) {
                     val vm: GalleryViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { GalleryViewModel(container.scanner, container.openWith, container.settings) }
+                            initializer { GalleryViewModel(container.scanner, container.library, container.openWith, container.settings) }
                         },
                     )
                     GalleryRoot(vm, container.animated, openWithUri, onFinish = ::finish)

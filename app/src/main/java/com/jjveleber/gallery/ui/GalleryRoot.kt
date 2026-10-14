@@ -75,6 +75,7 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
             if (s is Screen.Scanning) BackHandler(onBack = vm::cancelScan)
             PickerScreen(s, onPick = { pickTree.launch(null) }, onCancel = vm::cancelScan)
         }
+        is Screen.Folders -> Box(Modifier.fillMaxSize()) // Placeholder until the folder list screen exists.
         Screen.Loading -> Box(Modifier.fillMaxSize().background(Color.Black))
         Screen.Grid -> {
             BackHandler(onBack = vm::changeFolder)
