@@ -1,6 +1,6 @@
 # Gallery (Fire Max 11)
 
-Image viewer for Amazon Fire tablets (Fire OS 8 / Android 11+). Pick a folder and browse every image in it and its subfolders as a thumbnail grid or a full-screen slideshow. Opens images from other apps through **Open with**. Supports JPEG, PNG, WebP, GIF, BMP and HEIC, and plays animated GIF, WebP and APNG.
+Image viewer for Amazon Fire tablets (Fire OS 8 / Android 11+). Pick a folder and browse every image in it and its subfolders as a thumbnail grid or a full-screen slideshow. Opens images from other apps through **Open with**. Supports JPEG, PNG, WebP, GIF, BMP and HEIC (where the tablet can decode it), and plays animated GIF, WebP and APNG.
 
 ## Build
 
