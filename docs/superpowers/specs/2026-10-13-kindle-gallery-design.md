@@ -196,3 +196,33 @@ Before building the UI, a throwaway screen that loads the bundled animated WebP,
 - Grid, viewer, slideshow and Open with behave as specified above.
 - All JVM unit tests and instrumented tests pass.
 - Manual device checklist passes.
+
+## Amendment 1 (2026-10-13): MediaStore access
+
+Status: Approved for planning. Plan: `docs/superpowers/plans/2026-10-13-mediastore-access.md`.
+
+### Why
+
+Scanning a large folder through `DocumentsContract` (one query per subfolder, through the document provider) is slow, and because the tree grant is never persisted the user must pick the folder again on every launch.
+
+### What changes
+
+1. **Photo access, asked once.** On a normal launch the app requests `READ_EXTERNAL_STORAGE` (API 30 to 32) or `READ_MEDIA_IMAGES` (API 33+, already declared). Android remembers the answer. If access is denied, the app falls back to today's flow: the picker screen (section 4.1) with `ACTION_OPEN_DOCUMENT_TREE`, unchanged.
+2. **Folder list is the start screen** (with access granted). It lists every folder that holds supported images according to MediaStore, grouped by volume plus `RELATIVE_PATH`, sorted by path (natural order, then volume). Each row shows the folder name, its path (marked "SD card" when not on the built-in storage), the number of supported images directly in that folder, and a cover thumbnail (the most recently modified image in it). Folders with any path segment starting with '.' and files whose name starts with '.' are excluded, as in the folder walk. A **Browse other folder** button opens the system folder picker for folders the index misses (`.nomedia` folders, storage MediaStore does not cover); that path is today's SAF scan, unchanged.
+3. **Scanning a listed folder** is one MediaStore query: images on the folder's volume whose `RELATIVE_PATH` starts with the folder's path (SQL `LIKE` with `\`, `%` and `_` escaped, `ESCAPE '\'`), kept only if `isSupportedImage` accepts them and no path segment is hidden, and re-checked in Kotlin so a look-alike folder can never slip in. `ImageItem.relPath` is relative to the opened folder (for example `day2/img.jpg`); `uri` is the MediaStore item URI. The result goes through the same sort pipeline. Tapping a folder opens it recursively (folder plus subfolders), as today. The scanning screen stays but is near instant.
+4. **Last folder remembered.** The last folder opened from the folder list (volume plus relative path) is saved in DataStore with the other settings. On launch, if access is granted and that folder still has images, its grid opens directly; if it is now empty, the app forgets it and shows the folder list; if it cannot be read, the app shows "Folder no longer available" and the folder list. Opening a folder through the system picker clears the remembered folder (a tree grant cannot be reopened later), so the next launch starts at the folder list. **Folder** in the grid top bar, back from the grid, and Cancel on the scanning screen return to the folder list (or to the picker without access).
+5. **Grid thumbnails from the system cache.** For MediaStore items the grid loads `ContentResolver.loadThumbnail` (API 29+, system thumbnail cache, applies EXIF orientation) through a custom Coil fetcher, sized to the cell. GIF, WebP and PNG items are header-sniffed once (as the decoder already does) so the ANIM badge keeps working; when Animate thumbnails is on and the file is animated, the fetcher hands the file bytes to the normal decoders so it animates. Items from the system picker (fallback) keep today's decode path. The full-screen viewer is unchanged.
+6. **Grid prefetch.** While the grid scrolls, the app enqueues thumbnail loads for about the next 2 screens of cells in the scroll direction, so cells are already in the memory cache when they scroll in. To make the prefetch and the cell share one cache entry, the grid computes its column count itself (the same count `GridCells.Adaptive` gives for the preset sizes) and requests a fixed pixel size per cell.
+7. **Open with** is unchanged; the permission it requests is now usually already granted.
+
+### Superseded statements
+
+- Section 1, v1 feature 1 ("pick one folder per session"): the start screen is now the folder list; picking through the system picker is the fallback and the Browse other folder path.
+- Section 1, out of scope ("remembered or multiple folders"): the last folder opened from the folder list is now remembered. Multiple folders at once stay out of scope.
+- Section 3, last paragraph ("The picked folder does not [persist]: the app always starts at the picker"): the last MediaStore folder persists. Document tree grants are still never persisted (no `takePersistableUriPermission`).
+- Section 4.1 ("Picker screen (start screen)"): the picker is the start screen only when photo access is denied.
+- Section 4.2, **Change folder** ("back to picker"): returns to the folder list when access is granted.
+- Section 4.4, the permission is requested on every normal launch while it is not granted, not only on Open with (Android's "don't ask again" rules still apply). The Open with flow itself is unchanged.
+- Section 5, `scan`: adds `MediaLibrary` (MediaStore folder list and prefix query, with pure logic over a fake row source). `imaging`: adds the MediaStore thumbnail fetcher. Data flow: launch goes permission check, then folder list or remembered folder, then grid. "Process death returns the app to the picker" now means: to the remembered folder or the folder list (or the picker without access).
+- Section 6, "Folder deleted or storage removed": returns to the folder list when access is granted.
+- Section 7: JVM tests add LIKE escaping, folder grouping, relPath computation, prefetch range math and last-folder persistence; instrumented tests add the MediaStore query (seeded through MediaStore inserts owned by the app) and the thumbnail fetcher, including EXIF orientation. The manual checklist adds the items listed at the end of the plan.
