@@ -19,6 +19,7 @@ import com.jjveleber.gallery.testing.FakeScanner
 import com.jjveleber.gallery.testing.FakeSettingsStore
 import com.jjveleber.gallery.testing.MainDispatcherRule
 import com.jjveleber.gallery.testing.item
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -551,5 +552,54 @@ class GalleryViewModelTest {
         vm.requestDelete(listOf(a.uri))
         vm.trashConfirmed()
         assertEquals(Screen.Grid, vm.screen.value)
+    }
+
+    @Test fun imageDeletedDuringTheSearchStaysOutOfItsResult() = runTest {
+        val a = media("a.jpg", content = "x")
+        val b = media("b.jpg", content = "x")
+        library.all = listOf(a, b)
+        hasher.gate = CompletableDeferred()
+        val vm = openTrip(a, b)
+        vm.requestDelete(listOf(a.uri))
+        vm.trashConfirmed()
+        hasher.gate!!.complete(Unit)
+        assertTrue(vm.duplicates.value.isEmpty())
+    }
+
+    @Test fun deletingInDuplicatesOnlyMovesToTheNextImageStillListed() = runTest {
+        val a1 = media("a1.jpg", content = "x")
+        val a2 = media("a2.jpg", content = "x")
+        val b1 = media("b1.jpg", content = "y")
+        val b2 = media("b2.jpg", content = "y")
+        library.all = listOf(a1, a2, b1, b2)
+        val vm = openTrip(a1, a2, b1, b2)
+        vm.setDuplicatesOnly(true)
+        vm.openViewer(0, play = false)
+        vm.requestDelete(listOf(a1.uri))
+        vm.trashConfirmed()
+        assertEquals(listOf("b1.jpg", "b2.jpg"), vm.names())
+        assertEquals(0, vm.lastViewedIndex.value)
+    }
+
+    @Test fun deletingTheLastOpenWithImageGoesHome() = runTest {
+        val a = media("a.jpg")
+        resolver.result = OpenWithResult.Resolved(listOf(a), a.uri, "Trip")
+        val vm = vm()
+        vm.openWith("content://x/a", mayReadMedia = true)
+        vm.requestDelete(listOf(a.uri))
+        vm.trashConfirmed()
+        assertEquals(Screen.Folders(emptyList()), vm.screen.value)
+        assertNull(vm.openWith.value)
+    }
+
+    @Test fun trashRequestsAreCappedAndMarkedLaunched() = runTest {
+        val many = (0..MAX_TRASH_BATCH).map { media("$it.jpg") }
+        val vm = openTrip(*many.toTypedArray())
+        vm.requestDelete(many.map { it.uri })
+        assertNull(vm.deleteRequest.value)
+        assertEquals("Select up to $MAX_TRASH_BATCH images at a time", vm.message.value)
+        vm.requestDelete(listOf(many[0].uri))
+        vm.trashLaunched()
+        assertTrue(vm.deleteRequest.value!!.launched)
     }
 }

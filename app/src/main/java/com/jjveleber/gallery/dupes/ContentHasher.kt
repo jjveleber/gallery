@@ -77,8 +77,9 @@ class HashCache(private val file: File) {
 /** Hashes MediaStore and document files through [resolver], remembering results in [cache]. */
 class ContentHasher(private val resolver: ContentResolver, private val cache: HashCache) : ImageHasher {
     override suspend fun hash(item: ImageItem): String? {
-        val key = cache.key(item)
-        cache.get(key)?.let { return it }
+        // Without a modified time, a file overwritten at the same size would keep its old hash: never cache those.
+        val key = cache.key(item).takeIf { item.modifiedMs != 0L }
+        key?.let { cache.get(it) }?.let { return it }
         val hash = withContext(Dispatchers.IO) {
             try {
                 resolver.openInputStream(Uri.parse(item.uri))?.use(::sha256Hex)
@@ -88,7 +89,7 @@ class ContentHasher(private val resolver: ContentResolver, private val cache: Ha
                 null
             }
         } ?: return null
-        cache.put(key, hash)
+        key?.let { cache.put(it, hash) }
         return hash
     }
 

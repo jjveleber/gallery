@@ -131,9 +131,10 @@ private fun DeleteConfirmation(vm: GalleryViewModel) {
     }
     LaunchedEffect(request) {
         val r = request ?: return@LaunchedEffect
-        if (r.kind != DeleteKind.Trash) return@LaunchedEffect
+        if (r.kind != DeleteKind.Trash || r.launched) return@LaunchedEffect
         try {
             trash.launch(IntentSenderRequest.Builder(trashRequest(context.contentResolver, r.uris)).build())
+            vm.trashLaunched()
         } catch (e: Exception) {
             vm.cancelDelete()
             Toast.makeText(context, "Can't delete: ${e.message}", Toast.LENGTH_LONG).show()

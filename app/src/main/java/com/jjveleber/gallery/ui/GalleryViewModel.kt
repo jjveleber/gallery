@@ -48,8 +48,14 @@ sealed interface Screen {
 /** Set while the app was opened through "Open with". [single] means only the incoming image is shown. */
 data class OpenWithState(val single: Boolean, val incomingName: String, val folderHint: FolderLocation?)
 
-/** Images waiting for the user to confirm their deletion. [kind] is never [DeleteKind.Unsupported]. */
-data class DeleteRequest(val uris: List<String>, val kind: DeleteKind)
+/**
+ * Images waiting for the user to confirm their deletion. [kind] is never [DeleteKind.Unsupported]. [launched] is set
+ * once the system trash dialog is up, so a recreated activity does not open a second one.
+ */
+data class DeleteRequest(val uris: List<String>, val kind: DeleteKind, val launched: Boolean = false)
+
+/** The most images one system trash dialog takes: the request carries every URI and must fit in a binder call. */
+const val MAX_TRASH_BATCH = 500
 
 class GalleryViewModel(
     private val scanner: FolderScanner,
@@ -285,6 +291,10 @@ class GalleryViewModel(
                     searchDuplicates()
                 }
                 is OpenWithResult.Single -> {
+                    duplicateJob?.cancel()
+                    _duplicates.value = emptyMap()
+                    _duplicateProgress.value = null
+                    _duplicatesOnly.value = false
                     unsorted = listOf(result.item)
                     _items.value = unsorted
                     _folderName.value = ""
@@ -353,7 +363,10 @@ class GalleryViewModel(
                 val pool = if (mediaMode && targets.all { isMediaStoreUri(it.uri) }) library.allImages() else targets
                 val found = findDuplicates(targets, pool, hasher) { done, total -> _duplicateProgress.value = done to total }
                 hasher.save()
-                _duplicates.value = found
+                // Images deleted while the search ran are still in its result: drop them, as removeDeleted does.
+                val present = unsorted.mapTo(HashSet()) { it.uri }
+                val gone = targets.mapNotNullTo(HashSet()) { it.uri.takeIf { uri -> uri !in present } }
+                _duplicates.value = found.without(gone)
                 if (_duplicatesOnly.value) publish()
             } catch (e: CancellationException) {
                 throw e
@@ -372,7 +385,16 @@ class GalleryViewModel(
             _message.value = "Can't delete " + if (uris.size == 1) "this image" else "these images"
             return
         }
+        if (kind == DeleteKind.Trash && uris.size > MAX_TRASH_BATCH) {
+            _message.value = "Select up to $MAX_TRASH_BATCH images at a time"
+            return
+        }
         _deleteRequest.value = DeleteRequest(uris.toList(), kind)
+    }
+
+    /** The system trash dialog for [deleteRequest] is showing. */
+    fun trashLaunched() {
+        _deleteRequest.value = _deleteRequest.value?.copy(launched = true)
     }
 
     fun cancelDelete() {
@@ -407,18 +429,33 @@ class GalleryViewModel(
         if (uris.isEmpty()) return
         val gone = uris.toSet()
         unsorted = unsorted.filter { it.uri !in gone }
-        _duplicates.value = _duplicates.value
-            .filterKeys { it !in gone }
-            .mapValues { (_, copies) -> copies.copy(others = copies.others.filter { it.uri !in gone }) }
-            .filterValues { it.others.isNotEmpty() }
+        _duplicates.value = _duplicates.value.without(gone)
+        val before = _items.value
+        val position = _lastViewedIndex.value
         publish()
-        val size = _items.value.size
-        _lastViewedIndex.value = _lastViewedIndex.value.coerceAtMost(size - 1).coerceAtLeast(0)
-        if (size == 0 && _screen.value is Screen.Viewer) {
+        // The first image at or after the old position that is still listed. More than the deleted images can leave
+        // the list: with duplicatesOnly, a copy left alone drops out too.
+        val newIndex = _items.value.withIndex().associate { (i, item) -> item.uri to i }
+        _lastViewedIndex.value = before.drop(position).firstNotNullOfOrNull { newIndex[it.uri] }
+            ?: (_items.value.size - 1).coerceAtLeast(0)
+        if (_items.value.isEmpty() && _screen.value is Screen.Viewer) {
             _playing.value = false
-            _screen.value = Screen.Grid
+            if (_openWith.value != null) {
+                // Open with never shows the grid: go home instead.
+                _openWith.value = null
+                showHome()
+            } else {
+                _screen.value = Screen.Grid
+            }
         }
     }
+
+    /** These copies without [gone]: deleted images leave their groups, and a copy left alone is no longer a duplicate. */
+    private fun Map<String, Copies>.without(gone: Set<String>): Map<String, Copies> =
+        if (gone.isEmpty()) this
+        else filterKeys { it !in gone }
+            .mapValues { (_, copies) -> copies.copy(others = copies.others.filter { it.uri !in gone }) }
+            .filterValues { it.others.isNotEmpty() }
 
     private fun countLabel(n: Int) = if (n == 1) "1 image" else "$n images"
 

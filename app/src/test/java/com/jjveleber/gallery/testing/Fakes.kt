@@ -68,8 +68,12 @@ class FakeHasher : ImageHasher {
     val hashed = mutableListOf<String>()
     var saves = 0
 
+    /** When set, every hash waits for it, so a test can act while a search runs. */
+    var gate: CompletableDeferred<Unit>? = null
+
     override suspend fun hash(item: ImageItem): String? {
         hashed += item.uri
+        gate?.await()
         return contents[item.uri]
     }
 
