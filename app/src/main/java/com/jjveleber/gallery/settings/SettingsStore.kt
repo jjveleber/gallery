@@ -1,6 +1,9 @@
 package com.jjveleber.gallery.settings
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -11,8 +14,12 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.jjveleber.gallery.model.INTERVALS_SEC
 import com.jjveleber.gallery.model.Settings
 import com.jjveleber.gallery.model.SortSpec
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.io.File
 
 interface SettingsStore {
     val settings: Flow<Settings>
@@ -26,6 +33,16 @@ class DataStoreSettingsStore(private val store: DataStore<Preferences>) : Settin
         store.edit { prefs -> transform(prefs.toSettings()).writeTo(prefs) }
     }
 }
+
+/** Settings storage that starts over from the defaults if the file is corrupt, instead of failing every read. */
+fun settingsDataStore(
+    scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    produceFile: () -> File,
+): DataStore<Preferences> = PreferenceDataStoreFactory.create(
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+    scope = scope,
+    produceFile = produceFile,
+)
 
 private val SORT_ORDER = stringPreferencesKey("sort_order")
 private val SORT_ASCENDING = booleanPreferencesKey("sort_ascending")

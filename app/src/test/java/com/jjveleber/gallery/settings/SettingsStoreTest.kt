@@ -32,6 +32,14 @@ class SettingsStoreTest {
         PreferenceDataStoreFactory.create(scope = scope, produceFile = { File(tmp.root, "settings.preferences_pb") }),
     )
 
+    @Test fun corruptFileFallsBackToDefaults() = runBlocking {
+        val file = File(tmp.root, "corrupt.preferences_pb").apply { writeBytes(byteArrayOf(0x7f, 0x01, 0x02, 0x03, 0x04)) }
+        val store = DataStoreSettingsStore(settingsDataStore(scope) { file })
+        assertEquals(Settings(), store.settings.first())
+        store.update { it.copy(autoAdvance = true) }
+        assertEquals(true, store.settings.first().autoAdvance)
+    }
+
     @Test fun defaultsWhenEmpty() = runBlocking {
         assertEquals(Settings(), store().settings.first())
     }
