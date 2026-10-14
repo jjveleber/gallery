@@ -3,6 +3,7 @@ package com.jjveleber.gallery.imaging
 import android.graphics.drawable.Animatable
 import android.graphics.drawable.AnimatedImageDrawable
 import android.net.Uri
+import android.os.Debug
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import coil3.BitmapImage
@@ -11,6 +12,7 @@ import coil3.request.ErrorResult
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
 import coil3.size.Size
+import com.jjveleber.gallery.model.ImageItem
 import com.github.penfeizhou.animation.FrameAnimationDrawable
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -160,6 +162,42 @@ class ImagePipelineTest {
         val growthMb = (usedHeap() - before) / (1024 * 1024)
         assertTrue("Java heap grew ${growthMb}MB for ${held.size} large GIFs", growthMb < 40)
         InstrumentationRegistry.getInstrumentation().runOnMainSync { held.forEach { (it as Animatable).stop() } }
+    }
+
+    private fun gifFile(name: String, width: Int, height: Int): String =
+        Uri.fromFile(File(context.cacheDir, name).apply { writeBytes(solidGif(width, height, frames = 3)) }).toString()
+
+    private fun gridLoad(uri: String): ImageResult = runBlocking {
+        loader.execute(gridRequest(context, ImageItem(uri, "x", "x", 0, 0, "image/gif"), animate = true, sizePx = 192))
+    }
+
+    // Skia keeps full-canvas native frames for a GIF whatever the target size (about 10 MB at 1080p), so the grid
+    // shows a still for a GIF over GRID_GIF_MAX_PIXELS. The registry still says animated, for the ANIM badge.
+    @Test fun gridShowsStillForGifOverTheCap() {
+        val uri = gifFile("pipeline-over-cap.gif", 1920, 1080)
+        val image = success(gridLoad(uri)).image
+        assertTrue("expected a still but got $image", image is BitmapImage)
+        assertTrue(registry.isAnimated(uri))
+    }
+
+    @Test fun gridAnimatesGifUnderTheCap() {
+        val image = success(gridLoad(gifFile("pipeline-under-cap.gif", 640, 480))).image
+        assertTrue(image.asDrawable(context.resources) is Animatable)
+    }
+
+    @Test fun viewerAnimatesGifOverTheCap() {
+        val image = success(load(gifFile("pipeline-viewer-over-cap.gif", 1920, 1080), animate = true)).image
+        assertTrue(image.asDrawable(context.resources) is Animatable)
+    }
+
+    @Test fun largeGifsInTheGridStayOffTheNativeHeap() {
+        val uri = gifFile("pipeline-native.gif", 1920, 1080)
+        System.gc()
+        val before = Debug.getNativeHeapAllocatedSize()
+        val held = List(12) { success(gridLoad(uri)).image }
+        System.gc()
+        val growthMb = (Debug.getNativeHeapAllocatedSize() - before) / (1024 * 1024)
+        assertTrue("native heap grew ${growthMb}MB for ${held.size} large GIFs", growthMb < 60)
     }
 
     // APNG4Android tolerates a header-only APNG (acTL but no frames), so this cannot reach decodeStill;

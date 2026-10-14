@@ -31,6 +31,16 @@ object AnimationSniffer {
         ImageKind.Static // Truncated or malformed: let the static decoder try.
     }
 
+    /** Width x height of a GIF's logical screen, read from its header; 0 when [source] is not a readable GIF. Pass a peek(). */
+    fun gifCanvasPixels(source: BufferedSource): Long = try {
+        if (source.rangeEquals(0, GIF87) || source.rangeEquals(0, GIF89)) {
+            source.skip(6)
+            source.readShortLe().toLong().and(0xFFFF) * source.readShortLe().toLong().and(0xFFFF)
+        } else 0L
+    } catch (e: IOException) {
+        0L
+    }
+
     /** Walks GIF blocks until a second image descriptor (animated) or the trailer (static). */
     private fun gifHasTwoFrames(s: BufferedSource): Boolean {
         s.skip(6 + 4) // signature, logical screen width and height

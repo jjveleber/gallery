@@ -1,5 +1,6 @@
 package com.jjveleber.gallery.ui.grid
 
+import android.graphics.drawable.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -56,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil3.DrawableImage
 import coil3.SingletonImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.Disposable
@@ -203,12 +205,13 @@ private fun Modifier.pinchSteps(onZoom: (Float) -> Unit): Modifier = pointerInpu
 private fun Thumbnail(item: ImageItem, animate: Boolean, sizePx: Int, registry: AnimatedRegistry, onClick: () -> Unit) {
     val context = LocalContext.current
     var failed by remember(item.uri, animate) { mutableStateOf(false) }
-    var animated by remember(item.uri) { mutableStateOf(false) }
+    var badge by remember(item.uri) { mutableStateOf(false) }
     val request = remember(item.uri, animate, sizePx) {
         gridRequest(context, item, animate, sizePx, object : ImageRequest.Listener {
             override fun onSuccess(request: ImageRequest, result: SuccessResult) {
                 failed = false
-                animated = registry.isAnimated(item.uri)
+                // Badge an animated file that is shown as a still: animation off, or a GIF over the grid cap.
+                badge = registry.isAnimated(item.uri) && (result.image as? DrawableImage)?.drawable !is Animatable
             }
 
             override fun onError(request: ImageRequest, result: ErrorResult) {
@@ -225,7 +228,7 @@ private fun Thumbnail(item: ImageItem, animate: Boolean, sizePx: Int, registry: 
         } else {
             AsyncImage(model = request, contentDescription = item.name, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
         }
-        if (animated && !animate) {
+        if (badge) {
             Text(
                 "ANIM",
                 color = Color.White,

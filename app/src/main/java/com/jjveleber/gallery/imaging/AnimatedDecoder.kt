@@ -26,6 +26,12 @@ import java.io.IOException
 import java.io.InputStream
 
 /**
+ * A grid cell shows a still for a GIF whose canvas has more pixels than this. The platform decoder keeps full-canvas
+ * native frames whatever the target size (about 10 MB for a 1080p GIF), so a grid of large GIFs exhausts memory.
+ */
+const val GRID_GIF_MAX_PIXELS = 1_000_000L
+
+/**
  * Decodes animated GIF with the platform ImageDecoder, which decodes frames at the request size, and animated WebP
  * and APNG with APNG4Android, which handles WebP blend/dispose frames and APNG that the platform cannot animate.
  * APNG4Android's GIF decoder always allocates full-canvas Java-heap buffers, which runs a grid of large GIFs out of
@@ -134,6 +140,9 @@ class AnimatedDecoder(
             val key = options.getExtra(SourceKey)
             if (key.isNotEmpty()) registry.record(key, kind != ImageKind.Static)
             if (kind == ImageKind.Static || !options.getExtra(AnimateKey)) return null
+            if (kind == ImageKind.AnimatedGif && options.getExtra(GridKey) &&
+                AnimationSniffer.gifCanvasPixels(result.source.source().peek()) > GRID_GIF_MAX_PIXELS
+            ) return null
             return AnimatedDecoder(result.source, kind, options)
         }
     }

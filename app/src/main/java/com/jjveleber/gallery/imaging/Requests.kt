@@ -13,6 +13,9 @@ val AnimateKey = Extras.Key(default = false)
 /** The request's URI string, so the decoder can record sniff results in [AnimatedRegistry]. */
 val SourceKey = Extras.Key(default = "")
 
+/** Whether this request is for a grid cell, which caps what may animate (see [GRID_GIF_MAX_PIXELS]). */
+val GridKey = Extras.Key(default = false)
+
 fun imageRequest(
     context: Context,
     uri: String,
@@ -45,5 +48,6 @@ fun gridRequest(
     listener: ImageRequest.Listener? = null,
 ): ImageRequest {
     val data: Any = if (isMediaStoreUri(item.uri)) MediaThumbnail(item.uri, item.mime, sizePx) else Uri.parse(item.uri)
-    return imageRequest(context, item.uri, animate, listener, data).newBuilder().size(sizePx).precision(Precision.INEXACT).build()
+    return imageRequest(context, item.uri, animate, listener, data).newBuilder()
+        .size(sizePx).precision(Precision.INEXACT).apply { extras[GridKey] = true }.build()
 }

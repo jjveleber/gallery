@@ -36,4 +36,12 @@ class AnimationSnifferTest {
         AnimationSniffer.sniff(source.peek())
         assertEquals(data.size.toLong(), source.size)
     }
+
+    @Test fun gifCanvasPixelsReadsTheLogicalScreen() =
+        assertEquals(64L * 48, AnimationSniffer.gifCanvasPixels(Buffer().write(bytes("anim.gif"))))
+
+    @Test fun gifCanvasPixelsIsZeroForOtherFormatsAndTruncatedHeaders() {
+        assertEquals(0L, AnimationSniffer.gifCanvasPixels(Buffer().write(bytes("anim.png"))))
+        assertEquals(0L, AnimationSniffer.gifCanvasPixels(Buffer().write(bytes("anim.gif").copyOf(8))))
+    }
 }
