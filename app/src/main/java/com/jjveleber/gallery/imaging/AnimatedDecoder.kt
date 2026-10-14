@@ -1,6 +1,9 @@
 package com.jjveleber.gallery.imaging
 
-import android.graphics.BitmapFactory
+import android.graphics.ImageDecoder
+import android.graphics.drawable.Drawable
+import android.net.Uri
+import android.os.ParcelFileDescriptor
 import coil3.Image
 import coil3.ImageLoader
 import coil3.asImage
@@ -13,15 +16,20 @@ import coil3.request.Options
 import coil3.size.pxOrElse
 import com.github.penfeizhou.animation.FrameAnimationDrawable
 import com.github.penfeizhou.animation.apng.APNGDrawable
-import com.github.penfeizhou.animation.gif.GifDrawable
-import com.github.penfeizhou.animation.loader.ByteBufferLoader
+import com.github.penfeizhou.animation.loader.FileLoader
+import com.github.penfeizhou.animation.loader.Loader
+import com.github.penfeizhou.animation.loader.StreamLoader
 import com.github.penfeizhou.animation.webp.WebPDrawable
+import java.io.FileInputStream
+import java.io.FileNotFoundException
 import java.io.IOException
-import java.nio.ByteBuffer
+import java.io.InputStream
 
 /**
- * Decodes animated GIF, WebP and APNG with APNG4Android, which handles WebP blend/dispose frames and APNG
- * that the platform decoder gets wrong or cannot animate. Still images are left to Coil's default decoders.
+ * Decodes animated GIF with the platform ImageDecoder, which decodes frames at the request size, and animated WebP
+ * and APNG with APNG4Android, which handles WebP blend/dispose frames and APNG that the platform cannot animate.
+ * APNG4Android's GIF decoder always allocates full-canvas Java-heap buffers, which runs a grid of large GIFs out of
+ * memory. Neither path holds a copy of the file: both read it from disk. Still images are left to Coil's decoders.
  */
 class AnimatedDecoder(
     private val source: ImageSource,
@@ -30,15 +38,17 @@ class AnimatedDecoder(
 ) : Decoder {
 
     override suspend fun decode(): DecodeResult {
-        val bytes = source.source().use { it.readByteArray() }
-        val loader = object : ByteBufferLoader() {
-            override fun getByteBuffer(): ByteBuffer = ByteBuffer.wrap(bytes)
+        if (kind == ImageKind.AnimatedGif) {
+            try {
+                return DecodeResult(decodeGif().asImage(shareable = false), isSampled = true)
+            } catch (_: IOException) {
+                return DecodeResult(decodeStill(), isSampled = true)
+            }
         }
         val drawable = when (kind) {
-            ImageKind.AnimatedGif -> GifDrawable(loader)
-            ImageKind.AnimatedWebp -> WebPDrawable(loader)
-            ImageKind.Apng -> APNGDrawable(loader)
-            ImageKind.Static -> error("Static images are not routed to AnimatedDecoder")
+            ImageKind.AnimatedWebp -> WebPDrawable(loader())
+            ImageKind.Apng -> APNGDrawable(loader())
+            else -> error("$kind is not routed to APNG4Android")
         }
         // intrinsicWidth parses the header on APNG4Android's worker thread; 0 means it could not read the file.
         var width = drawable.intrinsicWidth
@@ -55,8 +65,41 @@ class AnimatedDecoder(
             applyRequestSize(drawable, width, height)
             DecodeResult(drawable.asImage(shareable = false), isSampled = false)
         } else {
-            DecodeResult(decodeStill(bytes), isSampled = true)
+            DecodeResult(decodeStill(), isSampled = true)
         }
+    }
+
+    /** A platform decoder source that reads the file itself: its path when it has one, else its URI. */
+    private fun imageDecoderSource(): ImageDecoder.Source =
+        source.fileOrNull()?.let { ImageDecoder.createSource(it.toFile()) }
+            ?: ImageDecoder.createSource(options.context.contentResolver, Uri.parse(options.getExtra(SourceKey)))
+
+    /** An [AnimatedImageDrawable] whose frames are decoded at the request size. */
+    private fun decodeGif(): Drawable =
+        ImageDecoder.decodeDrawable(imageDecoderSource()) { decoder, info, _ -> decoder.fitToRequest(info.size.width, info.size.height) }
+
+    /** Reads from the file instead of a heap copy. APNG4Android restarts by calling [Loader.obtain] again. */
+    private fun loader(): Loader {
+        val file = source.fileOrNull()
+        if (file != null) return FileLoader(file.toString())
+        val resolver = options.context.contentResolver
+        val uri = Uri.parse(options.getExtra(SourceKey))
+        return object : StreamLoader() {
+            override fun getInputStream(): InputStream =
+                SeekableFileStream(resolver.openFileDescriptor(uri, "r") ?: throw FileNotFoundException(uri.toString()))
+        }
+    }
+
+    /** The scale that fits [width] x [height] inside the request without upscaling. */
+    private fun fitScale(width: Int, height: Int): Float {
+        val maxWidth = options.size.width.pxOrElse { width }
+        val maxHeight = options.size.height.pxOrElse { height }
+        return minOf(1f, maxWidth.toFloat() / width, maxHeight.toFloat() / height)
+    }
+
+    private fun ImageDecoder.fitToRequest(width: Int, height: Int) {
+        val scale = fitScale(width, height)
+        setTargetSize((width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1))
     }
 
     /**
@@ -64,23 +107,25 @@ class AnimatedDecoder(
      * the decoder's sample size, so size them to fit the request while keeping the aspect ratio.
      */
     private fun applyRequestSize(drawable: FrameAnimationDrawable<*>, width: Int, height: Int) {
-        val maxWidth = options.size.width.pxOrElse { width }
-        val maxHeight = options.size.height.pxOrElse { height }
-        val scale = minOf(1f, maxWidth.toFloat() / width, maxHeight.toFloat() / height)
+        val scale = fitScale(width, height)
         drawable.setBounds(0, 0, (width * scale).toInt().coerceAtLeast(1), (height * scale).toInt().coerceAtLeast(1))
     }
 
-    /** Fallback when APNG4Android fails: the platform's first frame, downsampled to the requested size. */
-    private fun decodeStill(bytes: ByteArray): Image {
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        val maxWidth = options.size.width.pxOrElse { bounds.outWidth }
-        val maxHeight = options.size.height.pxOrElse { bounds.outHeight }
-        var sample = 1
-        while (bounds.outWidth / (sample * 2) >= maxWidth && bounds.outHeight / (sample * 2) >= maxHeight) sample *= 2
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
-            ?: throw IOException("Cannot decode image")
-        return bitmap.asImage()
+    /** Fallback when the animated decode fails: the platform's first frame at the requested size. */
+    private fun decodeStill(): Image =
+        ImageDecoder.decodeBitmap(imageDecoderSource()) { decoder, info, _ -> decoder.fitToRequest(info.size.width, info.size.height) }.asImage()
+
+    /**
+     * APNG4Android rewinds its stream with reset() before every frame, which ContentResolver streams do not support.
+     * This one reads the file descriptor and rewinds by seeking to the start.
+     */
+    private class SeekableFileStream(private val pfd: ParcelFileDescriptor) : FileInputStream(pfd.fileDescriptor) {
+        override fun markSupported(): Boolean = true
+        override fun mark(readlimit: Int) = Unit
+        override fun reset() {
+            channel.position(0)
+        }
+        override fun close() = pfd.close()
     }
 
     class Factory(private val registry: AnimatedRegistry) : Decoder.Factory {

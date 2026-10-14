@@ -1,5 +1,7 @@
 package com.jjveleber.gallery.imaging
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.drawable.Animatable
 import android.net.Uri
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -70,5 +72,28 @@ class MediaThumbnailTest {
         val uri = insert("rotated.jpg", "image/jpeg")
         success(load(uri, "image/jpeg", animate = false))
         assertEquals(DataSource.MEMORY_CACHE, success(load(uri, "image/jpeg", animate = false)).dataSource)
+    }
+
+    // A content:// source has no file, so the decoders read it through the ContentResolver; frames must still advance.
+    @Test fun animatedFilesAdvanceFramesFromContentUris() {
+        for ((asset, mime) in listOf("anim.gif" to "image/gif", "anim.png" to "image/png", "anim.webp" to "image/webp")) {
+            val uri = insert(asset, mime)
+            val request = imageRequest(context, uri.toString(), animate = true)
+            val drawable = success(runBlocking { loader.execute(request) }).image.asDrawable(context.resources)
+            assertTrue("$asset should be animatable", drawable is Animatable)
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { (drawable as Animatable).start() }
+            if (drawable.bounds.isEmpty) drawable.setBounds(0, 0, drawable.intrinsicWidth, drawable.intrinsicHeight)
+            val frames = mutableSetOf<Int>()
+            val deadline = System.currentTimeMillis() + 5000
+            while (frames.size < 2 && System.currentTimeMillis() < deadline) {
+                val bitmap = Bitmap.createBitmap(drawable.bounds.width(), drawable.bounds.height(), Bitmap.Config.ARGB_8888)
+                InstrumentationRegistry.getInstrumentation().runOnMainSync { drawable.draw(Canvas(bitmap)) }
+                val pixels = IntArray(bitmap.width * bitmap.height).also { bitmap.getPixels(it, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height) }
+                frames += pixels.contentHashCode()
+                Thread.sleep(40)
+            }
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { (drawable as Animatable).stop() }
+            assertTrue("$asset rendered ${frames.size} distinct frame(s) from a content URI", frames.size >= 2)
+        }
     }
 }
