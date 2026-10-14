@@ -2,6 +2,10 @@ package com.jjveleber.gallery.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.jjveleber.gallery.dupes.Copies
+import com.jjveleber.gallery.dupes.ImageHasher
+import com.jjveleber.gallery.dupes.findDuplicates
+import com.jjveleber.gallery.imaging.isMediaStoreUri
 import com.jjveleber.gallery.model.FolderRef
 import com.jjveleber.gallery.model.ImageItem
 import com.jjveleber.gallery.model.Settings
@@ -15,6 +19,9 @@ import com.jjveleber.gallery.scan.MediaLibrary
 import com.jjveleber.gallery.scan.OpenWithResolver
 import com.jjveleber.gallery.scan.OpenWithResult
 import com.jjveleber.gallery.settings.SettingsStore
+import com.jjveleber.gallery.storage.DeleteKind
+import com.jjveleber.gallery.storage.DocumentDeleter
+import com.jjveleber.gallery.storage.deleteKind
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,11 +48,16 @@ sealed interface Screen {
 /** Set while the app was opened through "Open with". [single] means only the incoming image is shown. */
 data class OpenWithState(val single: Boolean, val incomingName: String, val folderHint: FolderLocation?)
 
+/** Images waiting for the user to confirm their deletion. [kind] is never [DeleteKind.Unsupported]. */
+data class DeleteRequest(val uris: List<String>, val kind: DeleteKind)
+
 class GalleryViewModel(
     private val scanner: FolderScanner,
     private val library: MediaLibrary,
     private val resolver: OpenWithResolver,
     private val settingsStore: SettingsStore,
+    private val hasher: ImageHasher,
+    private val deleter: DocumentDeleter,
 ) : ViewModel() {
     val settings: StateFlow<Settings> = settingsStore.settings.stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
 
@@ -73,6 +85,21 @@ class GalleryViewModel(
     /** The last image shown full screen, so the grid can scroll back to it. */
     val lastViewedIndex: StateFlow<Int> = _lastViewedIndex.asStateFlow()
 
+    private val _duplicates = MutableStateFlow<Map<String, Copies>>(emptyMap())
+    /** The byte-identical copies of the current images, by image URI. Filled in the background after a load. */
+    val duplicates: StateFlow<Map<String, Copies>> = _duplicates.asStateFlow()
+
+    private val _duplicateProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    /** Files hashed and files to hash while the duplicate search runs, else null. */
+    val duplicateProgress: StateFlow<Pair<Int, Int>?> = _duplicateProgress.asStateFlow()
+
+    private val _duplicatesOnly = MutableStateFlow(false)
+    /** Whether [items] holds only the images that have copies, each group of copies together. */
+    val duplicatesOnly: StateFlow<Boolean> = _duplicatesOnly.asStateFlow()
+
+    private val _deleteRequest = MutableStateFlow<DeleteRequest?>(null)
+    val deleteRequest: StateFlow<DeleteRequest?> = _deleteRequest.asStateFlow()
+
     /** False until [start] or [openWith] has run, so the launch flow runs once per ViewModel. */
     var started = false
         private set
@@ -81,6 +108,7 @@ class GalleryViewModel(
     private var mediaMode = false
     private var unsorted: List<ImageItem> = emptyList()
     private var job: Job? = null
+    private var duplicateJob: Job? = null
     /** Bumped whenever a scan or resolve is superseded, so late results from the old one are dropped. */
     private var generation = 0
 
@@ -180,9 +208,11 @@ class GalleryViewModel(
                 val sorted = sortItems(found, settingsStore.settings.first().sort)
                 if (gen != generation) return@launch
                 unsorted = found
+                _duplicatesOnly.value = false
                 _items.value = sorted
                 _folderName.value = name
                 done(sorted)
+                searchDuplicates()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -226,6 +256,10 @@ class GalleryViewModel(
         unsorted = emptyList()
         _items.value = emptyList()
         _openWith.value = null
+        duplicateJob?.cancel()
+        _duplicates.value = emptyMap()
+        _duplicateProgress.value = null
+        _duplicatesOnly.value = false
     }
 
     fun openWith(uri: String, mayReadMedia: Boolean) {
@@ -242,11 +276,13 @@ class GalleryViewModel(
                     val sorted = sortItems(result.items, settingsStore.settings.first().sort)
                     val start = sorted.indexOfFirst { it.uri == result.startUri }.coerceAtLeast(0)
                     unsorted = result.items
+                    _duplicatesOnly.value = false
                     _items.value = sorted
                     _folderName.value = result.folderName
                     _openWith.value = OpenWithState(single = false, incomingName = sorted[start].name, folderHint = null)
                     _playing.value = false
                     _screen.value = Screen.Viewer(start)
+                    searchDuplicates()
                 }
                 is OpenWithResult.Single -> {
                     unsorted = listOf(result.item)
@@ -283,9 +319,108 @@ class GalleryViewModel(
     }
 
     fun setSort(spec: SortSpec) {
-        _items.value = sortItems(unsorted, spec)
+        publish(spec)
         updateSettings { it.copy(sort = spec) }
     }
+
+    fun setDuplicatesOnly(on: Boolean) {
+        _duplicatesOnly.value = on
+        publish()
+    }
+
+    /** Sorts [unsorted] into [items]. With [duplicatesOnly], keeps the images that have copies, each group together. */
+    private fun publish(sort: SortSpec = settings.value.sort) {
+        val sorted = sortItems(unsorted, sort)
+        val copies = _duplicates.value
+        _items.value = if (!_duplicatesOnly.value) sorted
+        else sorted.filter { it.uri in copies }.groupBy { copies.getValue(it.uri).hash }.values.flatten()
+    }
+
+    /**
+     * Looks for byte-identical copies of the current images: across the whole photo library for MediaStore images,
+     * else within the images loaded. A picked folder's files are never compared with MediaStore entries, which may
+     * be the same files.
+     */
+    private fun searchDuplicates() {
+        duplicateJob?.cancel()
+        _duplicates.value = emptyMap()
+        _duplicateProgress.value = null
+        val targets = unsorted
+        if (targets.isEmpty()) return
+        _duplicateProgress.value = 0 to 0
+        duplicateJob = viewModelScope.launch {
+            try {
+                val pool = if (mediaMode && targets.all { isMediaStoreUri(it.uri) }) library.allImages() else targets
+                val found = findDuplicates(targets, pool, hasher) { done, total -> _duplicateProgress.value = done to total }
+                hasher.save()
+                _duplicates.value = found
+                if (_duplicatesOnly.value) publish()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Leave the images unmarked: the search is a hint, not something to report.
+            }
+            _duplicateProgress.value = null
+        }
+    }
+
+    /** Asks to delete [uris]: the UI shows the system trash dialog or the app's own confirmation for [deleteRequest]. */
+    fun requestDelete(uris: Collection<String>) {
+        if (uris.isEmpty()) return
+        val kind = uris.map(::deleteKind).distinct().singleOrNull()
+        if (kind == null || kind == DeleteKind.Unsupported) {
+            _message.value = "Can't delete " + if (uris.size == 1) "this image" else "these images"
+            return
+        }
+        _deleteRequest.value = DeleteRequest(uris.toList(), kind)
+    }
+
+    fun cancelDelete() {
+        _deleteRequest.value = null
+    }
+
+    /** The system trash dialog for [deleteRequest] was accepted. */
+    fun trashConfirmed() {
+        val request = _deleteRequest.value ?: return
+        _deleteRequest.value = null
+        removeDeleted(request.uris)
+        _message.value = "Moved ${countLabel(request.uris.size)} to the trash"
+    }
+
+    /** The app's confirmation for a [DeleteKind.Permanent] [deleteRequest] was accepted. */
+    fun confirmPermanentDelete() {
+        val request = _deleteRequest.value ?: return
+        _deleteRequest.value = null
+        viewModelScope.launch {
+            val deleted = deleter.delete(request.uris)
+            removeDeleted(deleted)
+            _message.value = if (deleted.size == request.uris.size) "Deleted ${countLabel(deleted.size)}"
+            else "Deleted ${deleted.size} of ${countLabel(request.uris.size)}"
+        }
+    }
+
+    /**
+     * Drops deleted images from the list and from the duplicate groups (a copy left alone is no longer a duplicate),
+     * without hashing again. The viewer stays at the same position, which now shows the next image.
+     */
+    private fun removeDeleted(uris: List<String>) {
+        if (uris.isEmpty()) return
+        val gone = uris.toSet()
+        unsorted = unsorted.filter { it.uri !in gone }
+        _duplicates.value = _duplicates.value
+            .filterKeys { it !in gone }
+            .mapValues { (_, copies) -> copies.copy(others = copies.others.filter { it.uri !in gone }) }
+            .filterValues { it.others.isNotEmpty() }
+        publish()
+        val size = _items.value.size
+        _lastViewedIndex.value = _lastViewedIndex.value.coerceAtMost(size - 1).coerceAtLeast(0)
+        if (size == 0 && _screen.value is Screen.Viewer) {
+            _playing.value = false
+            _screen.value = Screen.Grid
+        }
+    }
+
+    private fun countLabel(n: Int) = if (n == 1) "1 image" else "$n images"
 
     fun reshuffle() = setSort(settings.value.sort.copy(order = SortOrder.Random, randomSeed = Random.nextLong()))
 

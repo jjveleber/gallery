@@ -22,6 +22,7 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
@@ -34,6 +35,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +85,8 @@ import com.jjveleber.gallery.slideshow.TapZone
 import com.jjveleber.gallery.slideshow.intervalLabel
 import com.jjveleber.gallery.slideshow.nextInterval
 import com.jjveleber.gallery.slideshow.tapZone
+import com.jjveleber.gallery.storage.DeleteKind
+import com.jjveleber.gallery.storage.deleteKind
 import com.jjveleber.gallery.ui.GalleryViewModel
 import com.jjveleber.gallery.ui.settings.SettingsSheet
 import kotlinx.coroutines.delay
@@ -105,6 +109,7 @@ fun ViewerScreen(
     val settings by vm.settings.collectAsState()
     val playing by vm.playing.collectAsState()
     val openWith by vm.openWith.collectAsState()
+    val duplicates by vm.duplicates.collectAsState()
     val close = { if (vm.closeViewer()) onExit() }
     BackHandler(onBack = close)
     val n = items.size
@@ -112,7 +117,13 @@ fun ViewerScreen(
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val pager = rememberPagerState(initialPage = LoopPaging.startPage(startIndex.coerceIn(0, n - 1), n)) { LoopPaging.pageCount(n) }
+    // A deletion shrinks the list, which changes the page-to-image mapping: start a new pager at the remembered
+    // position, which now holds the image after the deleted one.
+    val firstCount = remember { n }
+    val pager = key(n) {
+        val start = if (n == firstCount) startIndex else vm.lastViewedIndex.value
+        rememberPagerState(initialPage = LoopPaging.startPage(start.coerceIn(0, n - 1), n)) { LoopPaging.pageCount(n) }
+    }
     val current = LoopPaging.indexOf(pager.currentPage, n)
     var overlay by remember { mutableStateOf(true) }
     var showSettings by remember { mutableStateOf(false) }
@@ -217,8 +228,10 @@ fun ViewerScreen(
             exit = fadeOut(),
             modifier = Modifier.align(Alignment.TopCenter),
         ) {
+            val item = items[current]
             ViewerOverlay(
-                name = items[current].name,
+                name = item.name,
+                duplicateOf = duplicates[item.uri]?.others?.map { it.relPath }.orEmpty(),
                 position = "${current + 1} / $n",
                 playing = playing,
                 intervalSec = settings.intervalSec,
@@ -228,6 +241,9 @@ fun ViewerScreen(
                 onInterval = { vm.updateSettings { it.copy(intervalSec = nextInterval(it.intervalSec)) } },
                 onSettings = { showSettings = true },
                 onBrowse = { onBrowseFolder(openWith?.folderHint) },
+                onDelete = if (openWith?.single != true && deleteKind(item.uri) != DeleteKind.Unsupported) {
+                    { vm.requestDelete(listOf(item.uri)) }
+                } else null,
             )
         }
     }
@@ -352,6 +368,7 @@ private fun rememberDecodedImageSource(request: ImageRequest): ZoomableImageSour
 @Composable
 private fun ViewerOverlay(
     name: String,
+    duplicateOf: List<String>,
     position: String,
     playing: Boolean,
     intervalSec: Int,
@@ -361,6 +378,7 @@ private fun ViewerOverlay(
     onInterval: () -> Unit,
     onSettings: () -> Unit,
     onBrowse: () -> Unit,
+    onDelete: (() -> Unit)?,
 ) {
     Row(
         Modifier.fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 8.dp, vertical = 4.dp),
@@ -370,11 +388,22 @@ private fun ViewerOverlay(
         Column(Modifier.weight(1f)) {
             Text(name, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(position, color = Color.LightGray, style = MaterialTheme.typography.bodySmall)
+            if (duplicateOf.isNotEmpty()) {
+                val more = if (duplicateOf.size > 1) " (+${duplicateOf.size - 1} more)" else ""
+                Text(
+                    "Duplicate of ${duplicateOf.first()}$more",
+                    color = Color(0xFFFFC107),
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         if (showBrowse) AssistChip(onClick = onBrowse, label = { Text("Browse this folder") })
         TextButton(onClick = onPlayPause) { Text(if (playing) "Pause" else "Play") }
         TextButton(onClick = onInterval) { Text(intervalLabel(intervalSec)) }
         IconButton(onClick = onSettings) { Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.White) }
+        if (onDelete != null) IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.White) }
     }
 }
 

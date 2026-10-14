@@ -3,6 +3,9 @@ package com.jjveleber.gallery
 import android.content.Context
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.jjveleber.gallery.crash.CrashLog
+import com.jjveleber.gallery.dupes.ContentHasher
+import com.jjveleber.gallery.dupes.HashCache
+import com.jjveleber.gallery.dupes.ImageHasher
 import com.jjveleber.gallery.imaging.AnimatedRegistry
 import com.jjveleber.gallery.scan.AndroidFolderScanner
 import com.jjveleber.gallery.scan.AndroidMediaLibrary
@@ -13,6 +16,9 @@ import com.jjveleber.gallery.scan.OpenWithResolver
 import com.jjveleber.gallery.settings.DataStoreSettingsStore
 import com.jjveleber.gallery.settings.SettingsStore
 import com.jjveleber.gallery.settings.settingsDataStore
+import com.jjveleber.gallery.storage.AndroidDocumentDeleter
+import com.jjveleber.gallery.storage.DocumentDeleter
+import java.io.File
 
 class AppContainer(context: Context, val crashLog: CrashLog) {
     val animated = AnimatedRegistry()
@@ -22,4 +28,6 @@ class AppContainer(context: Context, val crashLog: CrashLog) {
     val scanner: FolderScanner = AndroidFolderScanner(context.contentResolver)
     val library: MediaLibrary = AndroidMediaLibrary(context.contentResolver)
     val openWith: OpenWithResolver = AndroidOpenWithResolver(context)
+    val hasher: ImageHasher = ContentHasher(context.contentResolver, HashCache(File(context.filesDir, "hashes.tsv")))
+    val deleter: DocumentDeleter = AndroidDocumentDeleter(context.contentResolver)
 }
