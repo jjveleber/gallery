@@ -592,14 +592,34 @@ class GalleryViewModelTest {
         assertNull(vm.openWith.value)
     }
 
-    @Test fun trashRequestsAreCappedAndMarkedLaunched() = runTest {
-        val many = (0..MAX_TRASH_BATCH).map { media("$it.jpg") }
+    @Test fun largeTrashRequestsGoInBatches() = runTest {
+        val many = (0 until TRASH_BATCH * 2 + 1).map { media("$it.jpg") }
         val vm = openTrip(*many.toTypedArray())
         vm.requestDelete(many.map { it.uri })
-        assertNull(vm.deleteRequest.value)
-        assertEquals("Select up to $MAX_TRASH_BATCH images at a time", vm.message.value)
-        vm.requestDelete(listOf(many[0].uri))
+        assertEquals(many.take(TRASH_BATCH).map { it.uri }, vm.deleteRequest.value!!.nextBatch)
         vm.trashLaunched()
         assertTrue(vm.deleteRequest.value!!.launched)
+        vm.trashConfirmed()
+        val second = vm.deleteRequest.value!!
+        assertFalse(second.launched)
+        assertEquals(many.drop(TRASH_BATCH).take(TRASH_BATCH).map { it.uri }, second.nextBatch)
+        assertEquals(TRASH_BATCH + 1, vm.items.value.size)
+        vm.trashConfirmed()
+        assertEquals(listOf(many.last().uri), vm.deleteRequest.value!!.nextBatch)
+        vm.trashConfirmed()
+        assertNull(vm.deleteRequest.value)
+        assertTrue(vm.items.value.isEmpty())
+        assertEquals("Moved ${many.size} images to the trash", vm.message.value)
+    }
+
+    @Test fun cancellingALaterBatchKeepsEarlierOnesTrashed() = runTest {
+        val many = (0 until TRASH_BATCH + 1).map { media("$it.jpg") }
+        val vm = openTrip(*many.toTypedArray())
+        vm.requestDelete(many.map { it.uri })
+        vm.trashConfirmed()
+        vm.cancelDelete()
+        assertNull(vm.deleteRequest.value)
+        assertEquals(listOf(many.last().relPath), vm.names())
+        assertEquals("Moved $TRASH_BATCH images to the trash", vm.message.value)
     }
 }

@@ -50,12 +50,19 @@ data class OpenWithState(val single: Boolean, val incomingName: String, val fold
 
 /**
  * Images waiting for the user to confirm their deletion. [kind] is never [DeleteKind.Unsupported]. [launched] is set
- * once the system trash dialog is up, so a recreated activity does not open a second one.
+ * once the system trash dialog is up, so a recreated activity does not open a second one. [trashed] counts the
+ * images already moved to the trash by earlier batches.
  */
-data class DeleteRequest(val uris: List<String>, val kind: DeleteKind, val launched: Boolean = false)
+data class DeleteRequest(val uris: List<String>, val kind: DeleteKind, val launched: Boolean = false, val trashed: Int = 0) {
+    /** The images for the next system trash dialog. */
+    val nextBatch: List<String> get() = uris.subList(trashed, minOf(uris.size, trashed + TRASH_BATCH))
+}
 
-/** The most images one system trash dialog takes: the request carries every URI and must fit in a binder call. */
-const val MAX_TRASH_BATCH = 500
+/**
+ * Images per system trash dialog. The request carries every URI through a binder call, which fails past about 1 MB,
+ * so a large selection is trashed in batches, each confirmed in its own dialog.
+ */
+const val TRASH_BATCH = 500
 
 class GalleryViewModel(
     private val scanner: FolderScanner,
@@ -385,10 +392,6 @@ class GalleryViewModel(
             _message.value = "Can't delete " + if (uris.size == 1) "this image" else "these images"
             return
         }
-        if (kind == DeleteKind.Trash && uris.size > MAX_TRASH_BATCH) {
-            _message.value = "Select up to $MAX_TRASH_BATCH images at a time"
-            return
-        }
         _deleteRequest.value = DeleteRequest(uris.toList(), kind)
     }
 
@@ -397,16 +400,21 @@ class GalleryViewModel(
         _deleteRequest.value = _deleteRequest.value?.copy(launched = true)
     }
 
+    /** The delete was declined. Batches already confirmed stay in the trash. */
     fun cancelDelete() {
+        val trashed = _deleteRequest.value?.trashed ?: 0
         _deleteRequest.value = null
+        if (trashed > 0) _message.value = "Moved ${countLabel(trashed)} to the trash"
     }
 
-    /** The system trash dialog for [deleteRequest] was accepted. */
+    /** The system trash dialog for [DeleteRequest.nextBatch] was accepted: the next batch's dialog follows, if any. */
     fun trashConfirmed() {
         val request = _deleteRequest.value ?: return
-        _deleteRequest.value = null
-        removeDeleted(request.uris)
-        _message.value = "Moved ${countLabel(request.uris.size)} to the trash"
+        val batch = request.nextBatch
+        val trashed = request.trashed + batch.size
+        _deleteRequest.value = if (trashed < request.uris.size) request.copy(launched = false, trashed = trashed) else null
+        removeDeleted(batch)
+        if (trashed == request.uris.size) _message.value = "Moved ${countLabel(trashed)} to the trash"
     }
 
     /** The app's confirmation for a [DeleteKind.Permanent] [deleteRequest] was accepted. */
