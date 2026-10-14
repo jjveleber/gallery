@@ -81,6 +81,29 @@ Your sort order, grid size, these options and the last folder you opened from th
 
 Tap the **Play** icon in the grid top bar to start a slideshow from the first image, or tap **Play** in the viewer controls to start it from the image you are looking at. Gallery moves to the next image after the interval you chose. Tap **Pause** in the controls to stop.
 
+## Duplicates
+
+Each time you open a folder, Gallery looks for exact copies of its images in the background. While it works, the grid subtitle reads **finding duplicates** with a count. With photo access allowed it compares against every image on the tablet, so a copy in another folder counts; in a folder picked with **Browse other folder** it compares only the files in that folder.
+
+Only byte-for-byte identical files count. The same picture saved again, resized or converted to another format is a different file and is not marked.
+
+- Images with a copy get a yellow **DUP** badge in the grid.
+- A **Duplicates (N)** button appears in the grid top bar. Tap it to show only the images with copies, with the copies of each one next to each other. Tap it again to show everything.
+- Full screen, the controls show **Duplicate of** and the path of the other copy.
+
+The first search in a large library reads the files that might match, which can take a while. Results are remembered, so later searches only read new or changed files.
+
+## Deleting images
+
+- **In the grid:** press and hold a thumbnail to start selecting, then tap more thumbnails to add or remove them. The top bar shows how many are selected, with **Select all**, **Select extra copies** (when there are duplicates) and the trash icon. **Select extra copies** picks every copy except the first of each group shown, so one copy of each always stays. Press Back or the X to stop selecting.
+- **Full screen:** tap the middle to show the controls, then tap the trash icon to delete the image you are looking at. The viewer moves on to the next image.
+
+What happens next depends on where the image came from:
+
+- **Folders from the folder list:** Android asks you to confirm moving the images to the trash. Trashed images disappear from every gallery app and Android erases them after about 30 days. Until then the file is still on the tablet, renamed to start with `.trashed-`, in its folder; a file manager that shows hidden files can rename it back.
+- **Folders picked with Browse other folder:** Gallery asks you to confirm, then deletes the files for good. This can't be undone.
+- **Open with:** when you can swipe through the image's folder, deleting works as for the folder list. A single image on its own (Gallery could not list its folder) has no trash icon.
+
 ## Open with
 
 Gallery can open images from other apps. In the Fire **Files** app or in ES File Explorer, press and hold an image, choose **Open with**, then **Gallery**.
