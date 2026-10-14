@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import com.jjveleber.gallery.imaging.AnimatedRegistry
 import com.jjveleber.gallery.scan.EXTERNAL_STORAGE_AUTHORITY
 import com.jjveleber.gallery.scan.externalStorageDocId
+import com.jjveleber.gallery.ui.folders.FolderListScreen
 import com.jjveleber.gallery.ui.grid.GridScreen
 import com.jjveleber.gallery.ui.picker.PickerScreen
 import com.jjveleber.gallery.ui.viewer.ViewerScreen
@@ -47,22 +48,35 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
         if (uri != null) vm.browseOpenWithFolder(uri.toString())
     }
 
-    // True from launch until the Open with request has been handed to the ViewModel, so the picker never shows
+    // True from launch until the Open with request has been handed to the ViewModel, so nothing shows
     // behind the permission dialog.
     var openWithPending by rememberSaveable(openWithUri) { mutableStateOf(openWithUri != null) }
-    if (openWithUri != null) {
-        val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
-        val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    val permission = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_IMAGES else Manifest.permission.READ_EXTERNAL_STORAGE
+    val requestPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (openWithUri != null) {
             vm.openWith(openWithUri, mayReadMedia = granted)
             openWithPending = false
+        } else {
+            vm.start(mayReadMedia = granted)
         }
-        LaunchedEffect(openWithUri) {
-            if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
-                vm.openWith(openWithUri, mayReadMedia = true)
-                openWithPending = false
-            } else {
+    }
+    // Saved so rotation while the dialog is up does not launch a second request (its result still arrives).
+    var permissionRequested by rememberSaveable { mutableStateOf(false) }
+    // Photo access is asked for until granted; Android remembers the answer. Denied falls back to the picker.
+    LaunchedEffect(openWithUri) {
+        if (openWithUri == null && vm.started) return@LaunchedEffect
+        if (openWithUri != null && !openWithPending) return@LaunchedEffect
+        val granted = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+        when {
+            !granted -> if (!permissionRequested) {
+                permissionRequested = true
                 requestPermission.launch(permission)
             }
+            openWithUri != null -> {
+                vm.openWith(openWithUri, mayReadMedia = true)
+                openWithPending = false
+            }
+            else -> vm.start(mayReadMedia = true)
         }
     }
 
@@ -75,7 +89,7 @@ fun GalleryRoot(vm: GalleryViewModel, registry: AnimatedRegistry, openWithUri: S
             if (s is Screen.Scanning) BackHandler(onBack = vm::cancelScan)
             PickerScreen(s, onPick = { pickTree.launch(null) }, onCancel = vm::cancelScan)
         }
-        is Screen.Folders -> Box(Modifier.fillMaxSize()) // Placeholder until the folder list screen exists.
+        is Screen.Folders -> FolderListScreen(s.folders, onOpen = vm::openFolder, onBrowse = { pickTree.launch(null) })
         Screen.Loading -> Box(Modifier.fillMaxSize().background(Color.Black))
         Screen.Grid -> {
             BackHandler(onBack = vm::changeFolder)

@@ -194,6 +194,7 @@ class GalleryViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                _message.value = "Couldn't read the photo library"
                 emptyList()
             }
             if (gen == generation) _screen.value = Screen.Folders(folders)

@@ -279,6 +279,7 @@ class GalleryViewModelTest {
         val vm = vm()
         vm.start(mayReadMedia = true)
         assertEquals(Screen.Folders(emptyList()), vm.screen.value)
+        assertEquals("Couldn't read the photo library", vm.message.value)
     }
 
     @Test fun openFolderShowsGridAndRemembersIt() = runTest {
