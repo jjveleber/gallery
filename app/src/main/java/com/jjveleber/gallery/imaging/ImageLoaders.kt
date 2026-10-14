@@ -5,5 +5,9 @@ import coil3.PlatformContext
 
 fun buildImageLoader(context: PlatformContext, registry: AnimatedRegistry): ImageLoader =
     ImageLoader.Builder(context)
-        .components { add(AnimatedDecoder.Factory(registry)) }
+        .components {
+            add(MediaThumbnailFetcher.Factory(context.contentResolver, registry))
+            add(MediaThumbnailFetcher.CacheKeyer)
+            add(AnimatedDecoder.Factory(registry))
+        }
         .build()
